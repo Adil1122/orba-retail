@@ -119,28 +119,28 @@ export function PurchasingView({
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-[13px] font-semibold text-[#5B6585]">
-            {workspace.settings.branchName} · Procurement & Receiving
+            {workspace.settings.branchName} · Purchasing & receiving
           </p>
-          <h1 className="text-[26px] sm:text-[30px] font-bold text-[#162660] leading-tight">
-            Purchasing & Suppliers
+          <h1 className="text-[28px] sm:text-[32px] font-bold text-[#162660] leading-tight tracking-[-0.02em]">
+            Suppliers
           </h1>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => setSupOpen(true)}
-            className="h-11 px-4 rounded-[12px] border border-[#D9CFC0] bg-white hover:bg-[#F8F2E9] text-[#162660] text-[14px] font-semibold inline-flex items-center gap-2"
+            className="zyro-bs h-12 px-4 rounded-[12px] border border-[#D9CFC0] bg-white hover:bg-[#F8F2E9] text-[#162660] text-[14px] font-semibold inline-flex items-center gap-2"
           >
             <Plus className="w-4 h-4" />
-            Add Supplier
+            Add supplier
           </button>
           <button
             type="button"
             onClick={openNewPo}
-            className="h-11 px-4 rounded-[12px] bg-[#162660] hover:bg-[#111E50] text-white text-[14px] font-bold inline-flex items-center gap-2"
+            className="zyro-bp h-12 px-5 rounded-[12px] bg-[#162660] hover:bg-[#111E50] text-white text-[14px] font-bold inline-flex items-center gap-2"
           >
             <Truck className="w-4 h-4" />
-            New Purchase Order
+            New purchase order
           </button>
         </div>
       </div>

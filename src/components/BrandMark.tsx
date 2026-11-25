@@ -3,6 +3,9 @@ import { Printer, X, CheckCircle2, AlertCircle } from 'lucide-react';
 import type { BusinessSettings, Sale } from '../types/pos.ts';
 import { formatDateTime, formatMoney, paymentMethodLabel } from '../lib/format.ts';
 
+/**
+ * Exact brand mark from the provided design HTML, titled ZYRO Retail POS.
+ */
 export function ZyroLogo({ size = 40 }: { size?: number }) {
   return (
     <svg
@@ -14,15 +17,18 @@ export function ZyroLogo({ size = 40 }: { size?: number }) {
       className="shrink-0 block"
     >
       <rect width="64" height="64" rx="15" fill="#162660" />
-      <path
-        d="M19 21H42L21 44H44"
+      <circle
+        cx="30"
+        cy="35"
+        r="16"
         fill="none"
         stroke="#FFFFFF"
-        strokeWidth="7.5"
+        strokeWidth="9.5"
         strokeLinecap="round"
-        strokeLinejoin="round"
+        strokeDasharray="76 24.5"
+        transform="rotate(8 30 35)"
       />
-      <circle cx="46" cy="20" r="6" fill="#D0E6FD" stroke="#162660" strokeWidth="1.6" />
+      <circle cx="44.5" cy="21" r="6.6" fill="#D0E6FD" stroke="#162660" strokeWidth="1.6" />
     </svg>
   );
 }
@@ -65,7 +71,7 @@ export function Modal({
       <div
         role="dialog"
         aria-modal="true"
-        className={`w-full ${maxWidth} bg-white border border-[#E9E1D5] rounded-t-[22px] sm:rounded-[22px] shadow-[0_24px_64px_rgba(12,20,50,0.3)] flex flex-col max-h-[92vh] overflow-hidden`}
+        className={`anim-zsheet w-full ${maxWidth} bg-white border border-[#E9E1D5] rounded-t-[22px] sm:rounded-[22px] shadow-[0_24px_64px_rgba(12,20,50,0.3)] flex flex-col max-h-[92vh] overflow-hidden`}
       >
         <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-[#F6F0E7] shrink-0">
           <div className="min-w-0">
@@ -92,6 +98,73 @@ export function Modal({
   );
 }
 
+export function SlideDrawer({
+  open,
+  onClose,
+  eyebrow,
+  title,
+  widthClass = 'max-w-[460px]',
+  children,
+  footer,
+}: {
+  open: boolean;
+  onClose: () => void;
+  eyebrow?: string;
+  title: string;
+  widthClass?: string;
+  children: React.ReactNode;
+  footer?: React.ReactNode;
+}) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex justify-end bg-[#0F1B47]/40 backdrop-blur-[2px]"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        className={`anim-zdrawer w-full ${widthClass} h-full bg-white border-l border-[#E9E1D5] shadow-[-16px_0_48px_rgba(12,20,50,0.22)] flex flex-col overflow-hidden`}
+      >
+        <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-[#F6F0E7] shrink-0">
+          <div className="min-w-0">
+            {eyebrow && (
+              <p className="text-[12px] font-semibold text-[#5B6585] truncate">{eyebrow}</p>
+            )}
+            <h2 className="text-[20px] font-bold text-[#162660] leading-tight truncate">{title}</h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close panel"
+            className="w-10 h-10 rounded-full bg-[#F6F0E7] hover:bg-[#ECE4D8] text-[#454F70] flex items-center justify-center shrink-0 transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="px-5 py-4 overflow-y-auto flex-1 min-h-0">{children}</div>
+        {footer && (
+          <div className="px-5 py-3.5 border-t border-[#F6F0E7] bg-[#F8F2E9]/70 flex items-center justify-end gap-2.5 shrink-0">
+            {footer}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function ToastBanner({
   toast,
   onClose,
@@ -104,7 +177,7 @@ export function ToastBanner({
     <div className="fixed bottom-20 lg:bottom-6 right-3 left-3 sm:left-auto sm:right-6 z-50 flex justify-center sm:justify-end pointer-events-none">
       <div
         role="status"
-        className={`pointer-events-auto flex items-center gap-2.5 px-4 py-3 rounded-[14px] shadow-[0_12px_28px_rgba(12,20,50,0.28)] text-[14px] font-semibold max-w-md ${
+        className={`anim-zup pointer-events-auto flex items-center gap-2.5 px-4 py-3 rounded-[14px] shadow-[0_12px_28px_rgba(12,20,50,0.28)] text-[14px] font-semibold max-w-md ${
           toast.type === 'ok'
             ? 'bg-[#162660] text-white'
             : 'bg-[#B42318] text-white'
@@ -153,14 +226,14 @@ export function Receipt80Modal({
           <button
             type="button"
             onClick={onClose}
-            className="h-11 px-4 rounded-[12px] border border-[#D9CFC0] bg-white hover:bg-[#F8F2E9] text-[#162660] text-[14px] font-semibold transition-colors"
+            className="zyro-bs h-11 px-4 rounded-[12px] border border-[#D9CFC0] bg-white text-[#162660] text-[14px] font-semibold"
           >
             Close
           </button>
           <button
             type="button"
             onClick={() => window.print()}
-            className="h-11 px-5 rounded-[12px] bg-[#162660] hover:bg-[#111E50] text-white text-[14px] font-bold flex items-center gap-2 transition-colors"
+            className="zyro-bp h-11 px-5 rounded-[12px] bg-[#162660] text-white text-[14px] font-bold flex items-center gap-2"
           >
             <Printer className="w-4 h-4" />
             Print 80mm Receipt
@@ -173,6 +246,11 @@ export function Receipt80Modal({
         className="mx-auto w-full max-w-[320px] bg-white border border-dashed border-[#C8BCAA] rounded-[14px] p-4 font-mono text-[12px] text-[#111111] leading-relaxed"
       >
         <div className="text-center border-b border-dashed border-[#C8BCAA] pb-3 mb-3">
+          {settings.showLogoOnReceipt !== false && (
+            <div className="flex justify-center mb-1.5">
+              <ZyroLogo size={32} />
+            </div>
+          )}
           <p className="text-[16px] font-bold tracking-tight uppercase">{settings.shopName}</p>
           <p className="text-[11px] text-[#555555]">{settings.branchName}</p>
           {settings.address && <p className="text-[11px] text-[#555555] mt-0.5">{settings.address}</p>}

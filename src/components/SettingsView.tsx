@@ -27,6 +27,7 @@ export function SettingsView({
   const [stPhone, setStPhone] = useState('');
   const [stRole, setStRole] = useState<UserRole>('cashier');
   const [stPwd, setStPwd] = useState('zyro1234');
+  const [stPin, setStPin] = useState('');
 
   const canEdit = user.role === 'owner' || user.role === 'manager';
 
@@ -54,11 +55,13 @@ export function SettingsView({
         phone: stPhone,
         role: stRole,
         password: stPwd,
+        pin: stPin.replace(/\D/g, '').slice(0, 4) || undefined,
       });
       setStaffOpen(false);
       setStName('');
       setStEmail('');
       setStPhone('');
+      setStPin('');
       await onRefresh();
       notify('ok', 'Team member added.');
     } catch (err) {
@@ -81,12 +84,27 @@ export function SettingsView({
     notify('ok', 'Full JSON backup downloaded.');
   }
 
-  const navItems = [
-    { id: 'shop' as const, label: 'Shop Profile', sub: 'Name, branch & type', icon: Store },
-    { id: 'team' as const, label: 'Team & Roles', sub: `${workspace.staff.length} staff accounts`, icon: Users },
-    { id: 'payments' as const, label: 'Payments', sub: 'Cash, card, wallets, Khata', icon: CreditCard },
-    { id: 'receipt' as const, label: 'Tax & 80mm Receipt', sub: 'NTN, FBR & footer', icon: ReceiptText },
-    { id: 'backup' as const, label: 'Backup & Export', sub: 'CSV & JSON downloads', icon: Download },
+  const navGroups = [
+    {
+      heading: 'Shop',
+      items: [
+        { id: 'shop' as const, label: 'Shop Profile', sub: 'Name, branch & type', icon: Store },
+      ],
+    },
+    {
+      heading: 'Counter & Receipts',
+      items: [
+        { id: 'payments' as const, label: 'Payments', sub: 'Cash, card, wallets, Khata', icon: CreditCard },
+        { id: 'receipt' as const, label: 'Tax & 80mm Receipt', sub: 'Logo, NTN & footer', icon: ReceiptText },
+      ],
+    },
+    {
+      heading: 'Team & Data',
+      items: [
+        { id: 'team' as const, label: 'Team & Roles', sub: `${workspace.staff.length} staff accounts`, icon: Users },
+        { id: 'backup' as const, label: 'Backup & Export', sub: 'CSV & JSON downloads', icon: Download },
+      ],
+    },
   ];
 
   return (
@@ -95,42 +113,51 @@ export function SettingsView({
         <p className="text-[13px] font-semibold text-[#5B6585]">
           {workspace.settings.branchName} · Configuration
         </p>
-        <h1 className="text-[26px] sm:text-[30px] font-bold text-[#162660] leading-tight">Settings</h1>
+        <h1 className="text-[28px] sm:text-[32px] font-bold text-[#162660] leading-tight tracking-[-0.02em]">
+          Settings
+        </h1>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-        {/* Left Settings Menu (matches Orba master-detail layout) */}
-        <nav className="lg:col-span-4 bg-white border border-[#E9E1D5] rounded-[20px] p-2.5 space-y-1">
-          {navItems.map((it) => {
-            const Icon = it.icon;
-            const active = section === it.id;
-            return (
-              <button
-                key={it.id}
-                type="button"
-                onClick={() => setSection(it.id)}
-                className={`w-full min-h-[54px] px-3 py-2 rounded-[14px] flex items-center gap-3 text-left transition-colors ${
-                  active
-                    ? 'bg-[#EEF5FE] text-[#162660]'
-                    : 'hover:bg-[#F8F2E9] text-[#454F70]'
-                }`}
-              >
-                <span
-                  className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${
-                    active ? 'bg-[#162660] text-white' : 'bg-[#F6F0E7] text-[#454F70]'
-                  }`}
-                >
-                  <Icon className="w-4 h-4" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className={`text-[14px] truncate ${active ? 'font-bold' : 'font-semibold'}`}>
-                    {it.label}
-                  </p>
-                  <p className="text-[12px] text-[#5B6585] truncate">{it.sub}</p>
-                </div>
-              </button>
-            );
-          })}
+        {/* Left Grouped Settings Menu (matches Settings.jsx) */}
+        <nav className="lg:col-span-4 bg-white border border-[#E9E1D5] rounded-[20px] p-3 space-y-4">
+          {navGroups.map((group) => (
+            <div key={group.heading} className="space-y-1">
+              <p className="px-3 text-[11px] font-bold uppercase tracking-[0.07em] text-[#5B6585]">
+                {group.heading}
+              </p>
+              {group.items.map((it) => {
+                const Icon = it.icon;
+                const active = section === it.id;
+                return (
+                  <button
+                    key={it.id}
+                    type="button"
+                    onClick={() => setSection(it.id)}
+                    className={`w-full min-h-[54px] px-3 py-2 rounded-[14px] flex items-center gap-3 text-left transition-colors ${
+                      active
+                        ? 'bg-[#EEF5FE] text-[#162660]'
+                        : 'hover:bg-[#F8F2E9] text-[#454F70]'
+                    }`}
+                  >
+                    <span
+                      className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${
+                        active ? 'bg-[#162660] text-white' : 'bg-[#F6F0E7] text-[#454F70]'
+                      }`}
+                    >
+                      <Icon className="w-4 h-4" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className={`text-[14px] truncate ${active ? 'font-bold' : 'font-semibold'}`}>
+                        {it.label}
+                      </p>
+                      <p className="text-[12px] text-[#5B6585] truncate">{it.sub}</p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          ))}
         </nav>
 
         {/* Right Detail Panel */}
@@ -165,14 +192,16 @@ export function SettingsView({
                     onChange={(e) =>
                       setForm({ ...form, shopType: e.target.value as BusinessSettings['shopType'] })
                     }
-                    className="w-full h-11 px-3 rounded-[12px] border border-[#D9CFC0] bg-white text-[14px]"
+                    className="zyro-field w-full h-11 px-3 rounded-[12px] border border-[#D9CFC0] bg-white text-[14px]"
                   >
                     <option value="clothing">Clothing & Fashion</option>
                     <option value="shoes">Footwear & Shoes</option>
+                    <option value="grocery">Grocery & Kiryana</option>
                     <option value="general">General Retail / Mart</option>
                     <option value="cosmetics">Cosmetics & Beauty</option>
                     <option value="electronics">Mobile & Electronics</option>
-                    <option value="pharmacy">Pharmacy</option>
+                    <option value="pharmacy">Pharmacy & Medical</option>
+                    <option value="hardware">Hardware & Paint</option>
                   </select>
                 </div>
                 <div>
@@ -181,7 +210,27 @@ export function SettingsView({
                     disabled={!canEdit}
                     value={form.currency}
                     onChange={(e) => setForm({ ...form, currency: e.target.value })}
-                    className="w-full h-11 px-3 rounded-[12px] border border-[#D9CFC0] text-[14px]"
+                    className="zyro-field w-full h-11 px-3 rounded-[12px] border border-[#D9CFC0] text-[14px]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[13px] font-semibold text-[#454F70] mb-1">City</label>
+                  <input
+                    disabled={!canEdit}
+                    value={form.city || ''}
+                    onChange={(e) => setForm({ ...form, city: e.target.value })}
+                    placeholder="Lahore"
+                    className="zyro-field w-full h-11 px-3 rounded-[12px] border border-[#D9CFC0] text-[14px]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[13px] font-semibold text-[#454F70] mb-1">Market / Area</label>
+                  <input
+                    disabled={!canEdit}
+                    value={form.area || ''}
+                    onChange={(e) => setForm({ ...form, area: e.target.value })}
+                    placeholder="Liberty Market, Gulberg III"
+                    className="zyro-field w-full h-11 px-3 rounded-[12px] border border-[#D9CFC0] text-[14px]"
                   />
                 </div>
                 <div>
@@ -190,7 +239,7 @@ export function SettingsView({
                     disabled={!canEdit}
                     value={form.phone}
                     onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                    className="w-full h-11 px-3 rounded-[12px] border border-[#D9CFC0] text-[14px]"
+                    className="zyro-field w-full h-11 px-3 rounded-[12px] border border-[#D9CFC0] text-[14px]"
                   />
                 </div>
                 <div>
@@ -199,7 +248,7 @@ export function SettingsView({
                     disabled={!canEdit}
                     value={form.address}
                     onChange={(e) => setForm({ ...form, address: e.target.value })}
-                    className="w-full h-11 px-3 rounded-[12px] border border-[#D9CFC0] text-[14px]"
+                    className="zyro-field w-full h-11 px-3 rounded-[12px] border border-[#D9CFC0] text-[14px]"
                   />
                 </div>
               </div>
@@ -208,7 +257,7 @@ export function SettingsView({
                   <button
                     type="submit"
                     disabled={saving}
-                    className="h-11 px-5 rounded-[12px] bg-[#162660] hover:bg-[#111E50] text-white text-[14px] font-bold"
+                    className="zyro-bp h-12 px-5 rounded-[12px] bg-[#162660] hover:bg-[#111E50] text-white text-[14px] font-bold"
                   >
                     {saving ? 'Saving...' : 'Save Shop Profile'}
                   </button>
@@ -247,10 +296,18 @@ export function SettingsView({
                       </span>
                       <div className="min-w-0">
                         <p className="text-[14px] font-bold text-[#162660] truncate">{st.name}</p>
-                        <p className="text-[12px] text-[#5B6585] truncate">{st.email}</p>
+                        <p className="text-[12px] text-[#5B6585] truncate">
+                          {st.email}
+                          {st.pin ? ' · Counter PIN set' : ''}
+                        </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
+                      {st.pin && (
+                        <span className="px-2 py-0.5 rounded-full bg-[#F6F0E7] text-[#454F70] text-[11px] font-bold tabular-num">
+                          PIN ••••
+                        </span>
+                      )}
                       <span className="px-2.5 py-0.5 rounded-full bg-[#EEF5FE] text-[#24398A] text-[12px] font-bold capitalize">
                         {st.role}
                       </span>
@@ -386,14 +443,27 @@ export function SettingsView({
                   disabled={!canEdit}
                   value={form.receiptFooter}
                   onChange={(e) => setForm({ ...form, receiptFooter: e.target.value })}
-                  className="w-full h-11 px-3 rounded-[12px] border border-[#D9CFC0] text-[14px]"
+                  className="zyro-field w-full h-11 px-3 rounded-[12px] border border-[#D9CFC0] text-[14px]"
                 />
               </div>
+              <label className="flex items-center justify-between p-3.5 rounded-[14px] bg-[#F8F2E9] border border-[#E9E1D5] cursor-pointer">
+                <div>
+                  <p className="text-[14px] font-bold text-[#162660]">Print shop logo on 80mm receipt</p>
+                  <p className="text-[12px] text-[#5B6585]">Includes the ZYRO Retail POS emblem at the top of printed bills</p>
+                </div>
+                <input
+                  type="checkbox"
+                  disabled={!canEdit}
+                  checked={form.showLogoOnReceipt !== false}
+                  onChange={(e) => setForm({ ...form, showLogoOnReceipt: e.target.checked })}
+                  className="w-5 h-5 accent-[#162660]"
+                />
+              </label>
               {canEdit && (
                 <button
                   type="submit"
                   disabled={saving}
-                  className="h-11 px-5 rounded-[12px] bg-[#162660] text-white text-[14px] font-bold"
+                  className="zyro-bp h-12 px-5 rounded-[12px] bg-[#162660] text-white text-[14px] font-bold"
                 >
                   Save Receipt & Tax Settings
                 </button>
@@ -533,22 +603,36 @@ export function SettingsView({
                 required
                 value={stPwd}
                 onChange={(e) => setStPwd(e.target.value)}
-                className="w-full h-11 px-3 rounded-[12px] border border-[#D9CFC0] text-[14px]"
+                className="zyro-field w-full h-11 px-3 rounded-[12px] border border-[#D9CFC0] text-[14px]"
               />
             </div>
+          </div>
+          <div>
+            <label className="block text-[13px] font-semibold text-[#454F70] mb-1">
+              4-digit Counter PIN (optional — for quick counter sign-in)
+            </label>
+            <input
+              type="text"
+              inputMode="numeric"
+              maxLength={4}
+              value={stPin}
+              onChange={(e) => setStPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+              placeholder="e.g. 2468"
+              className="zyro-field w-full h-11 px-3 rounded-[12px] border border-[#D9CFC0] text-[15px] font-bold tracking-[0.25em] tabular-num"
+            />
           </div>
           <div className="pt-2 flex justify-end gap-2">
             <button
               type="button"
               onClick={() => setStaffOpen(false)}
-              className="h-10 px-4 rounded-[10px] border border-[#D9CFC0] bg-white text-[#454F70] text-[14px] font-semibold"
+              className="zyro-bs h-11 px-4 rounded-[12px] border border-[#D9CFC0] bg-white text-[#454F70] text-[14px] font-semibold"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={saving}
-              className="h-10 px-5 rounded-[10px] bg-[#162660] text-white text-[14px] font-bold"
+              className="zyro-bp h-11 px-5 rounded-[12px] bg-[#162660] text-white text-[14px] font-bold"
             >
               Add Staff
             </button>

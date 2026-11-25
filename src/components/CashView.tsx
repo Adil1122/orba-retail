@@ -100,27 +100,27 @@ export function CashView({
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-[13px] font-semibold text-[#5B6585]">
-            {workspace.settings.branchName} · Counter Drawer
+            {workspace.settings.branchName} · Counter drawer & shifts
           </p>
-          <h1 className="text-[26px] sm:text-[30px] font-bold text-[#162660] leading-tight">
-            Cash & Shifts
+          <h1 className="text-[28px] sm:text-[32px] font-bold text-[#162660] leading-tight tracking-[-0.02em]">
+            Cash
           </h1>
         </div>
         {!activeShift ? (
           <button
             type="button"
             onClick={() => setOpenModal(true)}
-            className="h-11 px-4 rounded-[12px] bg-[#162660] hover:bg-[#111E50] text-white text-[14px] font-bold inline-flex items-center gap-2"
+            className="zyro-bp h-12 px-5 rounded-[12px] bg-[#162660] hover:bg-[#111E50] text-white text-[14px] font-bold inline-flex items-center gap-2"
           >
             <Unlock className="w-4 h-4" />
-            Open Cash Shift
+            Open cash shift
           </button>
         ) : (
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => setMovModal('cash_in')}
-              className="h-10 px-3.5 rounded-[12px] border border-[#D9CFC0] bg-white hover:bg-[#F8F2E9] text-[#14532D] text-[13px] font-bold inline-flex items-center gap-1.5"
+              className="zyro-bs h-11 px-4 rounded-[12px] border border-[#D9CFC0] bg-white hover:bg-[#F8F2E9] text-[#14532D] text-[13px] font-bold inline-flex items-center gap-1.5"
             >
               <ArrowDownLeft className="w-4 h-4" />
               Cash In
@@ -128,7 +128,7 @@ export function CashView({
             <button
               type="button"
               onClick={() => setMovModal('cash_out')}
-              className="h-10 px-3.5 rounded-[12px] border border-[#D9CFC0] bg-white hover:bg-[#F8F2E9] text-[#B42318] text-[13px] font-bold inline-flex items-center gap-1.5"
+              className="zyro-bs h-11 px-4 rounded-[12px] border border-[#D9CFC0] bg-white hover:bg-[#F8F2E9] text-[#B42318] text-[13px] font-bold inline-flex items-center gap-1.5"
             >
               <ArrowUpRight className="w-4 h-4" />
               Cash Out
@@ -139,7 +139,7 @@ export function CashView({
                 setCountedCash(String(expectedLive));
                 setCloseModal(true);
               }}
-              className="h-10 px-4 rounded-[12px] bg-[#162660] hover:bg-[#111E50] text-white text-[13px] font-bold inline-flex items-center gap-1.5"
+              className="zyro-bp h-11 px-5 rounded-[12px] bg-[#162660] hover:bg-[#111E50] text-white text-[13px] font-bold inline-flex items-center gap-1.5"
             >
               <Lock className="w-4 h-4" />
               Close Shift
@@ -260,13 +260,13 @@ export function CashView({
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse min-w-[640px]">
             <thead>
-              <tr className="border-b border-[#F6F0E7] bg-[#F8F2E9]/70 text-[12px] font-bold uppercase tracking-wider text-[#5B6585]">
-                <th className="py-3 px-4">Shift</th>
-                <th className="py-3 px-3">Opened By</th>
-                <th className="py-3 px-3 text-right">Float</th>
-                <th className="py-3 px-3 text-right">Expected</th>
-                <th className="py-3 px-3 text-right">Counted</th>
-                <th className="py-3 px-4 text-right">Variance</th>
+              <tr className="h-[42px] border-b border-[#EFE8DC] bg-[#F8F2E9] text-[11px] font-bold uppercase tracking-[0.06em] text-[#5B6585]">
+                <th className="px-4">Shift</th>
+                <th className="px-3">Opened By</th>
+                <th className="px-3 text-right">Float</th>
+                <th className="px-3 text-right">Expected</th>
+                <th className="px-3 text-right">Counted</th>
+                <th className="px-4 text-right">Variance</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#F6F0E7] text-[14px]">

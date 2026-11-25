@@ -1,4 +1,4 @@
-import type { StaffUser, WorkspacePayload } from '../types/pos.ts';
+import type { Product, Sale, StaffUser, WorkspacePayload } from '../types/pos.ts';
 
 const TOKEN_KEY = 'zyro_pos_session_token';
 
@@ -10,14 +10,18 @@ export function getStoredToken(): string | null {
   }
 }
 
-export function setStoredToken(token: string | null): void {
+export function setStoredToken(token: string | null, persistLong = true): void {
   try {
     if (!token) {
       window.sessionStorage.removeItem(TOKEN_KEY);
       window.localStorage.removeItem(TOKEN_KEY);
     } else {
       window.sessionStorage.setItem(TOKEN_KEY, token);
-      window.localStorage.setItem(TOKEN_KEY, token);
+      if (persistLong) {
+        window.localStorage.setItem(TOKEN_KEY, token);
+      } else {
+        window.localStorage.removeItem(TOKEN_KEY);
+      }
     }
   } catch {
     // Ignore storage quota restrictions
@@ -51,10 +55,36 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
-  login: (email: string, password: string) =>
+  health: () => request<{ ok: boolean; supabaseConnected: boolean }>('/api/health'),
+
+  login: (identifier: string, password: string) =>
     request<{ user: StaffUser; token: string }>('/api/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email: identifier, identifier, password }),
+    }),
+
+  pinLogin: (pin: string, staffId?: string, branchName?: string) =>
+    request<{ user: StaffUser; token: string }>('/api/auth/pin-login', {
+      method: 'POST',
+      body: JSON.stringify({ pin, staffId, branchName }),
+    }),
+
+  checkPhone: (phone: string) =>
+    request<{ exists: boolean; normalized: string }>('/api/auth/check-phone', {
+      method: 'POST',
+      body: JSON.stringify({ phone }),
+    }),
+
+  sendOtp: (target: string, purpose: 'verify' | 'reset' | 'join' = 'verify') =>
+    request<{ ok: boolean; target: string; demoCode: string }>('/api/auth/send-otp', {
+      method: 'POST',
+      body: JSON.stringify({ target, purpose }),
+    }),
+
+  verifyOtp: (target: string, code: string, purpose: 'verify' | 'reset' | 'join' = 'verify') =>
+    request<{ ok: boolean }>('/api/auth/verify-otp', {
+      method: 'POST',
+      body: JSON.stringify({ target, code, purpose }),
     }),
 
   register: (payload: {
@@ -63,8 +93,43 @@ export const api = {
     password: string;
     shopName?: string;
     phone?: string;
+    city?: string;
+    area?: string;
+    branchCount?: string;
+    shopKind?: string;
+    showLogoOnReceipt?: boolean;
   }) =>
     request<{ user: StaffUser; token: string }>('/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  forgotPassword: (identifier: string) =>
+    request<{ ok: boolean; demoCode: string; hint: string }>('/api/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ identifier }),
+    }),
+
+  resetPassword: (identifier: string, code: string, newPassword: string) =>
+    request<{ ok: boolean }>('/api/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ identifier, code, newPassword }),
+    }),
+
+  joinLookup: (phone: string) =>
+    request<{
+      found: boolean;
+      shopName: string;
+      branchName: string;
+      staffName: string;
+      role: StaffUser['role'];
+    }>('/api/auth/join-lookup', {
+      method: 'POST',
+      body: JSON.stringify({ phone }),
+    }),
+
+  joinComplete: (payload: { phone: string; code: string; pin: string; name?: string }) =>
+    request<{ user: StaffUser; token: string }>('/api/auth/join-complete', {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
@@ -75,6 +140,11 @@ export const api = {
 
   getWorkspace: () => request<WorkspacePayload>('/api/workspace'),
 
+  getProducts: (q?: string) =>
+    request<Product[]>(`/api/products${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+  lookupProduct: (code: string) =>
+    request<{ product: Product | null }>(`/api/products/lookup?code=${encodeURIComponent(code)}`),
+
   createCategory: (body: { name: string; color: string; description?: string }) =>
     request('/api/categories', { method: 'POST', body: JSON.stringify(body) }),
   updateCategory: (id: string, body: { name?: string; color?: string; description?: string }) =>
@@ -82,20 +152,34 @@ export const api = {
   deleteCategory: (id: string) => request(`/api/categories/${id}`, { method: 'DELETE' }),
 
   createProduct: (body: Record<string, unknown>) =>
-    request('/api/products', { method: 'POST', body: JSON.stringify(body) }),
+    request<Product>('/api/products', { method: 'POST', body: JSON.stringify(body) }),
   updateProduct: (id: string, body: Record<string, unknown>) =>
-    request(`/api/products/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+    request<Product>(`/api/products/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  updateProductPrice: (id: string, salePrice: number, costPrice?: number) =>
+    request<Product>(`/api/products/${id}/price`, {
+      method: 'PATCH',
+      body: JSON.stringify({ salePrice, costPrice }),
+    }),
   deleteProduct: (id: string) => request(`/api/products/${id}`, { method: 'DELETE' }),
   adjustProductStock: (id: string, delta: number, reason: string) =>
-    request(`/api/products/${id}/adjust`, {
+    request<Product>(`/api/products/${id}/adjust`, {
       method: 'POST',
       body: JSON.stringify({ delta, reason }),
     }),
+  batchReceiveStock: (items: { productId: string; qty: number }[], note?: string) =>
+    request<{ ok: boolean; updatedCount: number; totalUnits: number }>('/api/stock/batch-receive', {
+      method: 'POST',
+      body: JSON.stringify({ items, note }),
+    }),
   submitStockCount: (counts: { productId: string; countedQty: number }[]) =>
-    request('/api/stock-count', { method: 'POST', body: JSON.stringify({ counts }) }),
+    request<{ ok: boolean; updated: number }>('/api/stock-count', {
+      method: 'POST',
+      body: JSON.stringify({ counts }),
+    }),
 
+  getSales: () => request<Sale[]>('/api/sales'),
   createSale: (body: Record<string, unknown>) =>
-    request('/api/sales', { method: 'POST', body: JSON.stringify(body) }),
+    request<Sale>('/api/sales', { method: 'POST', body: JSON.stringify(body) }),
   createReturn: (saleId: string, body: Record<string, unknown>) =>
     request(`/api/sales/${saleId}/return`, { method: 'POST', body: JSON.stringify(body) }),
 
@@ -139,6 +223,12 @@ export const api = {
     request(`/api/shifts/${shiftId}/close`, {
       method: 'POST',
       body: JSON.stringify({ countedCash, notes }),
+    }),
+
+  resolveApproval: (id: string, decision: 'approved' | 'dismissed') =>
+    request(`/api/approvals/${id}/resolve`, {
+      method: 'POST',
+      body: JSON.stringify({ decision }),
     }),
 
   updateSettings: (body: Record<string, unknown>) =>

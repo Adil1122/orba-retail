@@ -124,10 +124,10 @@ export function ReportsView({ workspace }: { workspace: WorkspacePayload }) {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-[13px] font-semibold text-[#5B6585]">
-            {workspace.settings.branchName} · Business Intelligence
+            {workspace.settings.branchName} · Daily & period summary
           </p>
-          <h1 className="text-[26px] sm:text-[30px] font-bold text-[#162660] leading-tight">
-            Reports & Analytics
+          <h1 className="text-[28px] sm:text-[32px] font-bold text-[#162660] leading-tight tracking-[-0.02em]">
+            Reports
           </h1>
         </div>
 
@@ -157,7 +157,7 @@ export function ReportsView({ workspace }: { workspace: WorkspacePayload }) {
           <button
             type="button"
             onClick={exportCurrentCsv}
-            className="h-10 px-4 rounded-[12px] bg-[#162660] hover:bg-[#111E50] text-white text-[13px] font-bold inline-flex items-center gap-2"
+            className="zyro-bp h-11 px-4 rounded-[12px] bg-[#162660] hover:bg-[#111E50] text-white text-[13px] font-bold inline-flex items-center gap-2"
           >
             <Download className="w-4 h-4" />
             Export CSV
@@ -274,11 +274,11 @@ export function ReportsView({ workspace }: { workspace: WorkspacePayload }) {
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse min-w-[600px]">
               <thead>
-                <tr className="border-b border-[#F6F0E7] bg-[#F8F2E9]/70 text-[12px] font-bold uppercase tracking-wider text-[#5B6585]">
-                  <th className="py-3 px-4">Product</th>
-                  <th className="py-3 px-3 text-right">Units Sold</th>
-                  <th className="py-3 px-3 text-right">Revenue</th>
-                  <th className="py-3 px-4 text-right">Est. Profit</th>
+                <tr className="h-[42px] border-b border-[#EFE8DC] bg-[#F8F2E9] text-[11px] font-bold uppercase tracking-[0.06em] text-[#5B6585]">
+                  <th className="px-4">Product</th>
+                  <th className="px-3 text-right">Units Sold</th>
+                  <th className="px-3 text-right">Revenue</th>
+                  <th className="px-4 text-right">Est. Profit</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#F6F0E7] text-[14px]">
@@ -308,12 +308,12 @@ export function ReportsView({ workspace }: { workspace: WorkspacePayload }) {
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse min-w-[640px]">
               <thead>
-                <tr className="border-b border-[#F6F0E7] bg-[#F8F2E9]/70 text-[12px] font-bold uppercase tracking-wider text-[#5B6585]">
-                  <th className="py-3 px-4">Item</th>
-                  <th className="py-3 px-3 text-right">On Hand</th>
-                  <th className="py-3 px-3 text-right">Unit Cost</th>
-                  <th className="py-3 px-3 text-right">Cost Valuation</th>
-                  <th className="py-3 px-4 text-right">Retail Valuation</th>
+                <tr className="h-[42px] border-b border-[#EFE8DC] bg-[#F8F2E9] text-[11px] font-bold uppercase tracking-[0.06em] text-[#5B6585]">
+                  <th className="px-4">Item</th>
+                  <th className="px-3 text-right">On Hand</th>
+                  <th className="px-3 text-right">Unit Cost</th>
+                  <th className="px-3 text-right">Cost Valuation</th>
+                  <th className="px-4 text-right">Retail Valuation</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#F6F0E7] text-[14px]">

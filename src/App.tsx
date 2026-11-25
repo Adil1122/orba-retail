@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api, getStoredToken, setStoredToken } from './lib/api.ts';
 import type { NavSection, Sale, StaffUser, WorkspacePayload } from './types/pos.ts';
-import { AuthView } from './components/AuthView.tsx';
+import { AuthView, type AuthScreenMode } from './components/AuthView.tsx';
 import { AppShell } from './components/AppShell.tsx';
 import { DashboardView } from './components/DashboardView.tsx';
 import { PosRegisterView } from './components/PosRegisterView.tsx';
@@ -16,8 +16,13 @@ import { SettingsView } from './components/SettingsView.tsx';
 import { Receipt80Modal, ToastBanner, ZyroLogo } from './components/BrandMark.tsx';
 
 type ParsedRoute =
-  | { kind: 'auth'; mode: 'login' | 'register' }
-  | { kind: 'section'; section: NavSection; roleHint?: 'owner' | 'cashier' | 'stock' };
+  | { kind: 'auth'; mode: AuthScreenMode }
+  | {
+      kind: 'section';
+      section: NavSection;
+      roleHint?: 'owner' | 'cashier' | 'stock';
+      stockSubMode?: 'addstock';
+    };
 
 const SECTION_TO_PATH: Record<NavSection, string> = {
   dashboard: '/owner',
@@ -32,15 +37,30 @@ const SECTION_TO_PATH: Record<NavSection, string> = {
   settings: '/settings',
 };
 
+const AUTH_MODE_TO_PATH: Record<AuthScreenMode, string> = {
+  welcome: '/',
+  login: '/login',
+  register: '/register',
+  join: '/join',
+  signin: '/signin',
+};
+
 function parsePathname(rawPath: string): ParsedRoute {
   const clean = rawPath.replace(/\/+$/, '').toLowerCase() || '/';
   switch (clean) {
+    case '/':
+    case '/welcome':
+      return { kind: 'auth', mode: 'welcome' };
     case '/login':
       return { kind: 'auth', mode: 'login' };
     case '/register':
     case '/signup':
       return { kind: 'auth', mode: 'register' };
-    case '/':
+    case '/join':
+      return { kind: 'auth', mode: 'join' };
+    case '/signin':
+    case '/counter':
+      return { kind: 'auth', mode: 'signin' };
     case '/owner':
     case '/dashboard':
       return { kind: 'section', section: 'dashboard', roleHint: 'owner' };
@@ -52,6 +72,8 @@ function parsePathname(rawPath: string): ParsedRoute {
     case '/inventory':
     case '/products':
       return { kind: 'section', section: 'stock', roleHint: 'stock' };
+    case '/addstock':
+      return { kind: 'section', section: 'stock', roleHint: 'stock', stockSubMode: 'addstock' };
     case '/orders':
     case '/bills':
     case '/returns':
@@ -91,10 +113,13 @@ export default function App() {
   const [active, setActive] = useState<NavSection>(
     initialRoute.kind === 'section' ? initialRoute.section : 'dashboard'
   );
-  const [pendingSection, setPendingSection] = useState<NavSection | null>(
-    initialRoute.kind === 'section' && window.location.pathname !== '/' ? initialRoute.section : null
+  const [stockInitialAddMode, setStockInitialAddMode] = useState<boolean>(
+    initialRoute.kind === 'section' && initialRoute.stockSubMode === 'addstock'
   );
-  const [authMode, setAuthMode] = useState<'login' | 'register'>(
+  const [pendingSection, setPendingSection] = useState<NavSection | null>(
+    initialRoute.kind === 'section' ? initialRoute.section : null
+  );
+  const [authMode, setAuthMode] = useState<AuthScreenMode>(
     initialRoute.kind === 'auth' ? initialRoute.mode : 'login'
   );
   const [authEmailHint, setAuthEmailHint] = useState<string>(() => {
@@ -123,6 +148,7 @@ export default function App() {
 
   const navigateToSection = useCallback((section: NavSection, replace = false) => {
     setActive(section);
+    if (section !== 'stock') setStockInitialAddMode(false);
     const targetPath = SECTION_TO_PATH[section];
     if (window.location.pathname !== targetPath) {
       if (replace) {
@@ -133,6 +159,12 @@ export default function App() {
     }
   }, []);
 
+  const openAddStock = useCallback(() => {
+    setStockInitialAddMode(true);
+    setActive('stock');
+    window.history.pushState({}, '', '/addstock');
+  }, []);
+
   useEffect(() => {
     const onPopState = () => {
       const parsed = parsePathname(window.location.pathname);
@@ -140,6 +172,7 @@ export default function App() {
         setAuthMode(parsed.mode);
       } else {
         setActive(parsed.section);
+        setStockInitialAddMode(parsed.stockSubMode === 'addstock');
         setPendingSection(parsed.section);
         if (parsed.roleHint === 'cashier') setAuthEmailHint('cashier@zyropos.app');
         else if (parsed.roleHint === 'stock') setAuthEmailHint('stock@zyropos.app');
@@ -164,12 +197,13 @@ export default function App() {
           setUser(me);
           setWorkspace(ws);
           const parsed = parsePathname(window.location.pathname);
-          if (parsed.kind === 'auth' || window.location.pathname === '/') {
+          if (parsed.kind === 'auth') {
             const target = defaultSectionForRole(me.role);
             setActive(target);
             window.history.replaceState({}, '', SECTION_TO_PATH[target]);
           } else {
             setActive(parsed.section);
+            setStockInitialAddMode(parsed.stockSubMode === 'addstock');
           }
         }
       } catch {
@@ -197,7 +231,7 @@ export default function App() {
     }
   }
 
-  async function handleLogout() {
+  async function handleLogout(nextAuthMode: AuthScreenMode = 'welcome') {
     try {
       await api.logout();
     } catch {
@@ -207,8 +241,18 @@ export default function App() {
     setUser(null);
     setWorkspace(null);
     setPendingSection(null);
-    setAuthMode('login');
-    window.history.pushState({}, '', '/login');
+    setAuthMode(nextAuthMode);
+    window.history.pushState({}, '', AUTH_MODE_TO_PATH[nextAuthMode]);
+  }
+
+  async function handleSwitchBranch(branchName: string) {
+    try {
+      await api.updateSettings({ branchName });
+      await refreshWorkspace();
+      notify('ok', `Switched active branch to ${branchName}`);
+    } catch (err) {
+      notify('err', err instanceof Error ? err.message : 'Could not switch branch.');
+    }
   }
 
   if (booting) {
@@ -228,7 +272,7 @@ export default function App() {
         initialEmail={authEmailHint}
         onModeChange={(nextMode) => {
           setAuthMode(nextMode);
-          window.history.replaceState({}, '', nextMode === 'register' ? '/register' : '/login');
+          window.history.replaceState({}, '', AUTH_MODE_TO_PATH[nextMode]);
         }}
       />
     );
@@ -243,15 +287,21 @@ export default function App() {
         onNavigate={navigateToSection}
         user={user}
         settings={workspace.settings}
-        onLogout={handleLogout}
+        onLogout={() => handleLogout('welcome')}
+        onSwitchCounter={() => handleLogout('signin')}
+        onSwitchBranch={handleSwitchBranch}
         lowStockCount={lowStockCount}
         heldBillsCount={workspace.heldBills.length}
       >
         {active === 'dashboard' && (
           <DashboardView
             workspace={workspace}
+            user={user}
             onNavigate={navigateToSection}
+            onOpenAddStock={openAddStock}
             onOpenReceipt={setReceiptSale}
+            onRefresh={refreshWorkspace}
+            notify={notify}
           />
         )}
         {active === 'pos' && (
@@ -264,7 +314,16 @@ export default function App() {
           />
         )}
         {active === 'stock' && (
-          <StockView workspace={workspace} onRefresh={refreshWorkspace} notify={notify} />
+          <StockView
+            workspace={workspace}
+            initialAddStockMode={stockInitialAddMode}
+            onExitAddStock={() => {
+              setStockInitialAddMode(false);
+              window.history.replaceState({}, '', '/stock');
+            }}
+            onRefresh={refreshWorkspace}
+            notify={notify}
+          />
         )}
         {active === 'orders' && (
           <OrdersView

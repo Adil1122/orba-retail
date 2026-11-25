@@ -21,6 +21,16 @@ export type NavSection =
   | 'reports'
   | 'settings';
 
+export type ShopKind =
+  | 'clothing'
+  | 'shoes'
+  | 'pharmacy'
+  | 'grocery'
+  | 'cosmetics'
+  | 'jewellery'
+  | 'electronics'
+  | 'general';
+
 export interface StaffUser {
   id: string;
   name: string;
@@ -28,6 +38,7 @@ export interface StaffUser {
   role: UserRole;
   pin?: string;
   phone?: string;
+  branchName?: string;
   active: boolean;
   avatarBg: string;
   avatarFg: string;
@@ -38,7 +49,10 @@ export interface BusinessSettings {
   id: string;
   shopName: string;
   branchName: string;
-  shopType: 'clothing' | 'shoes' | 'general' | 'pharmacy' | 'electronics' | 'cosmetics';
+  shopType: ShopKind;
+  city?: string;
+  area?: string;
+  branchCount?: string;
   phone: string;
   address: string;
   currency: string;
@@ -49,6 +63,7 @@ export interface BusinessSettings {
   receiptHeader: string;
   receiptFooter: string;
   showSkuOnReceipt: boolean;
+  showLogoOnReceipt?: boolean;
   enabledPayments: {
     cash: boolean;
     card: boolean;
@@ -79,6 +94,7 @@ export interface Product {
   stockQty: number;
   minStock: number;
   swatch: string;
+  artKey?: string;
   active: boolean;
   updatedAt: string;
 }
@@ -286,6 +302,17 @@ export interface StockAdjustment {
   createdAt: string;
 }
 
+export interface ApprovalItem {
+  id: string;
+  kind: 'discount' | 'refund' | 'stock_count' | 'po';
+  title: string;
+  detail: string;
+  amount: number;
+  requestedBy: string;
+  status: 'pending' | 'approved' | 'dismissed';
+  createdAt: string;
+}
+
 export interface WorkspacePayload {
   settings: BusinessSettings;
   staff: StaffUser[];
@@ -302,4 +329,5 @@ export interface WorkspacePayload {
   shifts: CashShift[];
   cashMovements: CashMovement[];
   stockAdjustments: StockAdjustment[];
+  approvals?: ApprovalItem[];
 }

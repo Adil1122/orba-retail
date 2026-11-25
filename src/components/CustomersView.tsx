@@ -3,7 +3,7 @@ import { Plus, Search, Phone, Banknote, Edit3, Trash2, BookUser } from 'lucide-r
 import type { Customer, WorkspacePayload } from '../types/pos.ts';
 import { api } from '../lib/api.ts';
 import { formatDateTime, formatMoney, getInitials } from '../lib/format.ts';
-import { Modal } from './BrandMark.tsx';
+import { Modal, SlideDrawer } from './BrandMark.tsx';
 
 export function CustomersView({
   workspace,
@@ -140,19 +140,19 @@ export function CustomersView({
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-[13px] font-semibold text-[#5B6585]">
-            {workspace.settings.branchName} · Credit Ledger
+            {workspace.settings.branchName} · Credit ledger
           </p>
-          <h1 className="text-[26px] sm:text-[30px] font-bold text-[#162660] leading-tight">
-            Customers & Khata
+          <h1 className="text-[28px] sm:text-[32px] font-bold text-[#162660] leading-tight tracking-[-0.02em]">
+            Khata
           </h1>
         </div>
         <button
           type="button"
           onClick={openAdd}
-          className="h-11 px-4 rounded-[12px] bg-[#162660] hover:bg-[#111E50] text-white text-[14px] font-bold inline-flex items-center gap-2"
+          className="zyro-bp h-12 px-5 rounded-[12px] bg-[#162660] hover:bg-[#111E50] text-white text-[14px] font-bold inline-flex items-center gap-2"
         >
           <Plus className="w-4 h-4" />
-          Add Customer
+          Add customer
         </button>
       </div>
 
@@ -184,7 +184,7 @@ export function CustomersView({
       {/* Customer List */}
       <div className="bg-white border border-[#E9E1D5] rounded-[20px] overflow-hidden">
         <div className="p-4 border-b border-[#F6F0E7] flex flex-wrap items-center gap-3">
-          <div className="flex-1 min-w-[200px] h-11 flex items-center gap-2 px-3 rounded-[12px] border border-[#D9CFC0] bg-[#F8F2E9]/40">
+          <div className="zyro-field flex-1 min-w-[200px] h-11 flex items-center gap-2 px-3 rounded-[12px] border border-[#D9CFC0] bg-white">
             <Search className="w-4 h-4 text-[#5B6585]" />
             <input
               type="search"
@@ -361,17 +361,17 @@ export function CustomersView({
         </form>
       </Modal>
 
-      {/* Customer Khata Ledger & Collect Payment Modal */}
-      <Modal
+      {/* Customer Khata Ledger & Collect Payment SlideDrawer (matches Khata.jsx) */}
+      <SlideDrawer
         open={Boolean(activeLedgerCustomer)}
         onClose={() => setLedgerCust(null)}
-        title={activeLedgerCustomer?.name || 'Customer Ledger'}
-        subtitle={
+        eyebrow={
           activeLedgerCustomer
             ? `${activeLedgerCustomer.phone} · Lifetime Spend ${formatMoney(activeLedgerCustomer.totalSpent, cur)}`
             : ''
         }
-        maxWidth="max-w-lg"
+        title={activeLedgerCustomer?.name || 'Customer Ledger'}
+        widthClass="max-w-[480px]"
       >
         {activeLedgerCustomer && (
           <div className="space-y-4">
@@ -472,7 +472,7 @@ export function CustomersView({
             </div>
           </div>
         )}
-      </Modal>
+      </SlideDrawer>
     </div>
   );
 }

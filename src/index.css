@@ -4,6 +4,7 @@
   --font-sans: "Outfit", "Segoe UI", Roboto, system-ui, sans-serif;
   --font-display: "Outfit", "Segoe UI", Roboto, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-urdu: "Noto Naskh Arabic", "Outfit", serif;
 
   /* Primary Brand */
   --color-zyro-primary: #162660;
@@ -78,8 +79,112 @@
   }
 }
 
-.tabular-num {
+.tabular-num,
+.num {
   font-variant-numeric: tabular-nums;
+}
+
+.font-urdu {
+  font-family: "Noto Naskh Arabic", "Outfit", serif;
+}
+
+/* Signature interactive classes from design HTML */
+.zyro-bp {
+  transition: background-color 0.1s ease-out, transform 0.1s ease-out;
+}
+.zyro-bp:hover:not(:disabled) {
+  background-color: #111E50;
+}
+.zyro-bp:active:not(:disabled) {
+  transform: scale(0.98);
+  background-color: #0F1B47;
+}
+.zyro-bp:disabled {
+  background-color: #ECE4D8;
+  color: #5B6585;
+  box-shadow: none;
+}
+
+.zyro-bs {
+  transition: background-color 0.1s ease-out, transform 0.1s ease-out;
+}
+.zyro-bs:hover:not(:disabled) {
+  background-color: #F8F2E9;
+}
+.zyro-bs:active:not(:disabled) {
+  transform: scale(0.98);
+  background-color: #F6F0E7;
+}
+
+.zyro-tile {
+  transition: border-color 0.15s ease-out, transform 0.1s ease-out, box-shadow 0.15s ease-out;
+}
+.zyro-tile:hover {
+  border-color: #B5D3F5;
+}
+.zyro-tile:active {
+  transform: scale(0.98);
+}
+
+.zyro-opt {
+  transition: border-color 0.15s ease-out, transform 0.1s ease-out, background-color 0.12s ease-out;
+}
+.zyro-opt:hover {
+  border-color: #B5D3F5;
+}
+.zyro-opt:active {
+  transform: scale(0.99);
+}
+
+.zyro-field {
+  border-color: #8A8276;
+  transition: border-color 0.12s ease-out, box-shadow 0.12s ease-out;
+}
+.zyro-field:focus-within {
+  border-color: #4D7BE0;
+  box-shadow: 0 0 0 3px rgba(77, 123, 224, 0.28);
+}
+.zyro-field.zyro-err {
+  border-color: #B42318;
+}
+
+.zyro-ph {
+  background-image:
+    radial-gradient(circle at 50% 30%, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0) 72%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0) 60%, rgba(22, 38, 96, 0.06) 100%);
+}
+.zyro-ph svg {
+  filter: drop-shadow(0 4px 4px rgba(22, 38, 96, 0.18));
+}
+
+@keyframes zflash {
+  0% { background-color: #D0E6FD; }
+  100% { background-color: #FFFFFF; }
+}
+@keyframes zup {
+  0% { opacity: 0; transform: translateY(10px); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes zdrawer {
+  0% { opacity: 0; transform: translateX(28px); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes zsheet {
+  0% { opacity: 0; transform: translateY(18px) scale(0.99); }
+  100% { opacity: 1; transform: none; }
+}
+
+.anim-zup {
+  animation: zup 0.18s ease-out both;
+}
+.anim-zdrawer {
+  animation: zdrawer 0.18s ease-out both;
+}
+.anim-zsheet {
+  animation: zsheet 0.18s ease-out both;
+}
+.anim-zflash {
+  animation: zflash 0.55s ease-out;
 }
 
 /* Custom subtle warm scrollbars matching the design system */

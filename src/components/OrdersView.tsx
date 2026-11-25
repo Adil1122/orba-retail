@@ -3,7 +3,7 @@ import { Search, Printer, RotateCcw, ReceiptText } from 'lucide-react';
 import type { Sale, WorkspacePayload } from '../types/pos.ts';
 import { api } from '../lib/api.ts';
 import { formatDateTime, formatMoney, paymentMethodLabel } from '../lib/format.ts';
-import { Modal } from './BrandMark.tsx';
+import { Modal, SlideDrawer } from './BrandMark.tsx';
 
 export function OrdersView({
   workspace,
@@ -96,10 +96,10 @@ export function OrdersView({
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-[13px] font-semibold text-[#5B6585]">
-            {workspace.settings.branchName} · Bill Book
+            {workspace.settings.branchName} · {workspace.sales.length} bills
           </p>
-          <h1 className="text-[26px] sm:text-[30px] font-bold text-[#162660] leading-tight">
-            Orders & Returns
+          <h1 className="text-[28px] sm:text-[32px] font-bold text-[#162660] leading-tight tracking-[-0.02em]">
+            Bill book
           </h1>
         </div>
         <div className="inline-flex gap-1 p-1 rounded-[12px] bg-[#ECE4D8]">
@@ -125,9 +125,9 @@ export function OrdersView({
       </div>
 
       {tab === 'sales' ? (
-        <div className="bg-white border border-[#E9E1D5] rounded-[20px] overflow-hidden">
+        <div className="bg-white border border-[#E9E1D5] rounded-[20px] overflow-hidden shadow-[0_1px_2px_rgba(16,24,40,0.03)]">
           <div className="p-4 border-b border-[#F6F0E7] flex flex-wrap items-center gap-3">
-            <div className="flex-1 min-w-[200px] h-11 flex items-center gap-2 px-3 rounded-[12px] border border-[#D9CFC0] bg-[#F8F2E9]/40">
+            <div className="zyro-field flex-1 min-w-[200px] h-11 flex items-center gap-2 px-3 rounded-[12px] border border-[#D9CFC0] bg-white">
               <Search className="w-4 h-4 text-[#5B6585]" />
               <input
                 type="search"
@@ -140,7 +140,7 @@ export function OrdersView({
             <select
               value={payFilter}
               onChange={(e) => setPayFilter(e.target.value)}
-              className="h-11 px-3 rounded-[12px] border border-[#D9CFC0] bg-white text-[14px] font-semibold"
+              className="zyro-field h-11 px-3 rounded-[12px] border border-[#D9CFC0] bg-white text-[14px] font-semibold"
             >
               <option value="all">All Payment Methods</option>
               <option value="cash">Cash</option>
@@ -156,14 +156,14 @@ export function OrdersView({
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse min-w-[720px]">
               <thead>
-                <tr className="border-b border-[#F6F0E7] bg-[#F8F2E9]/70 text-[12px] font-bold uppercase tracking-wider text-[#5B6585]">
-                  <th className="py-3 px-4">Bill #</th>
-                  <th className="py-3 px-3">Date & Time</th>
-                  <th className="py-3 px-3">Customer</th>
-                  <th className="py-3 px-3">Payment</th>
-                  <th className="py-3 px-3">Status</th>
-                  <th className="py-3 px-3 text-right">Total</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
+                <tr className="h-[42px] border-b border-[#EFE8DC] bg-[#F8F2E9] text-[11px] font-bold uppercase tracking-[0.06em] text-[#5B6585]">
+                  <th className="px-4">Bill #</th>
+                  <th className="px-3">Date & Time</th>
+                  <th className="px-3">Customer</th>
+                  <th className="px-3">Payment</th>
+                  <th className="px-3">Status</th>
+                  <th className="px-3 text-right">Total</th>
+                  <th className="px-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#F6F0E7] text-[14px]">
@@ -251,13 +251,13 @@ export function OrdersView({
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse min-w-[640px]">
                 <thead>
-                  <tr className="border-b border-[#F6F0E7] bg-[#F8F2E9]/70 text-[12px] font-bold uppercase tracking-wider text-[#5B6585]">
-                    <th className="py-3 px-4">Return #</th>
-                    <th className="py-3 px-3">Original Bill</th>
-                    <th className="py-3 px-3">Customer</th>
-                    <th className="py-3 px-3">Reason</th>
-                    <th className="py-3 px-3">Refund Method</th>
-                    <th className="py-3 px-4 text-right">Refunded</th>
+                  <tr className="h-[42px] border-b border-[#EFE8DC] bg-[#F8F2E9] text-[11px] font-bold uppercase tracking-[0.06em] text-[#5B6585]">
+                    <th className="px-4">Return #</th>
+                    <th className="px-3">Original Bill</th>
+                    <th className="px-3">Customer</th>
+                    <th className="px-3">Reason</th>
+                    <th className="px-3">Refund Method</th>
+                    <th className="px-4 text-right">Refunded</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#F6F0E7] text-[14px]">
@@ -280,17 +280,17 @@ export function OrdersView({
         </div>
       )}
 
-      {/* Invoice Detail Modal */}
-      <Modal
+      {/* Invoice Detail SlideDrawer (matches BillBook.jsx) */}
+      <SlideDrawer
         open={Boolean(selectedSale)}
         onClose={() => setSelectedSale(null)}
-        title={`Invoice ${selectedSale?.billNo || ''}`}
-        subtitle={
+        eyebrow={
           selectedSale
             ? `${formatDateTime(selectedSale.createdAt)} · Cashier: ${selectedSale.cashierName}`
             : ''
         }
-        maxWidth="max-w-lg"
+        title={`Bill ${selectedSale?.billNo || ''}`}
+        widthClass="max-w-[460px]"
         footer={
           selectedSale && (
             <>
@@ -298,7 +298,7 @@ export function OrdersView({
                 <button
                   type="button"
                   onClick={() => openReturnFlow(selectedSale)}
-                  className="h-10 px-4 rounded-[10px] border border-[#EBD892] bg-[#FFF3C4] text-[#6B4E00] text-[13px] font-bold inline-flex items-center gap-1.5"
+                  className="zyro-bs h-11 px-4 rounded-[12px] border border-[#EBD892] bg-[#FFF3C4] text-[#6B4E00] text-[13px] font-bold inline-flex items-center gap-1.5"
                 >
                   <RotateCcw className="w-4 h-4" />
                   Process Return
@@ -307,7 +307,7 @@ export function OrdersView({
               <button
                 type="button"
                 onClick={() => onOpenReceipt(selectedSale)}
-                className="h-10 px-4 rounded-[10px] bg-[#162660] text-white text-[13px] font-bold inline-flex items-center gap-1.5"
+                className="zyro-bp h-11 px-5 rounded-[12px] bg-[#162660] text-white text-[13px] font-bold inline-flex items-center gap-1.5"
               >
                 <Printer className="w-4 h-4" />
                 Print Receipt
@@ -365,7 +365,7 @@ export function OrdersView({
             </div>
           </div>
         )}
-      </Modal>
+      </SlideDrawer>
 
       {/* Process Return Modal */}
       <Modal

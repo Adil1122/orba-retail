@@ -1,44 +1,34 @@
 import React, { useState } from 'react';
 import {
-  LayoutDashboard,
-  ShoppingBag,
-  Package,
-  ReceiptText,
-  BookUser,
-  Truck,
-  Wallet,
-  Banknote,
   BarChart3,
-  Settings,
-  Menu,
-  X,
+  BookOpen,
+  Building2,
+  ChevronDown,
+  Home,
+  KeyRound,
   LogOut,
-  ChevronRight,
+  Menu,
+  MoreHorizontal,
+  Package,
+  Receipt,
+  Settings,
+  ShoppingBag,
+  Truck,
+  Users,
+  Wallet,
+  X,
 } from 'lucide-react';
 import type { BusinessSettings, NavSection, StaffUser } from '../types/pos.ts';
-import { getInitials } from '../lib/format.ts';
 import { ZyroLogo } from './BrandMark.tsx';
 
-interface NavItemDef {
+interface NavItem {
   id: NavSection;
   label: string;
   shortLabel: string;
-  group: 'operations' | 'records' | 'manage';
   icon: React.ComponentType<{ className?: string }>;
+  group: 'primary' | 'backoffice' | 'bottom';
+  badge?: number;
 }
-
-const NAV_ITEMS: NavItemDef[] = [
-  { id: 'dashboard', label: 'Dashboard', shortLabel: 'Home', group: 'operations', icon: LayoutDashboard },
-  { id: 'pos', label: 'Sell Register', shortLabel: 'Sell', group: 'operations', icon: ShoppingBag },
-  { id: 'stock', label: 'Stock & Products', shortLabel: 'Stock', group: 'operations', icon: Package },
-  { id: 'orders', label: 'Orders & Returns', shortLabel: 'Orders', group: 'records', icon: ReceiptText },
-  { id: 'customers', label: 'Customers & Khata', shortLabel: 'Khata', group: 'records', icon: BookUser },
-  { id: 'purchasing', label: 'Purchasing', shortLabel: 'Purchase', group: 'records', icon: Truck },
-  { id: 'expenses', label: 'Expenses', shortLabel: 'Expenses', group: 'manage', icon: Wallet },
-  { id: 'cash', label: 'Cash & Shifts', shortLabel: 'Cash', group: 'manage', icon: Banknote },
-  { id: 'reports', label: 'Reports', shortLabel: 'Reports', group: 'manage', icon: BarChart3 },
-  { id: 'settings', label: 'Settings', shortLabel: 'Settings', group: 'manage', icon: Settings },
-];
 
 export function AppShell({
   active,
@@ -46,6 +36,8 @@ export function AppShell({
   user,
   settings,
   onLogout,
+  onSwitchCounter,
+  onSwitchBranch,
   lowStockCount,
   heldBillsCount,
   children,
@@ -55,277 +47,467 @@ export function AppShell({
   user: StaffUser;
   settings: BusinessSettings;
   onLogout: () => void;
+  onSwitchCounter?: () => void;
+  onSwitchBranch?: (branchName: string) => void;
   lowStockCount: number;
   heldBillsCount: number;
   children: React.ReactNode;
 }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [branchMenuOpen, setBranchMenuOpen] = useState(false);
 
-  const isCompactRail = active === 'pos';
-  const activeItem = NAV_ITEMS.find((n) => n.id === active) || NAV_ITEMS[0];
+  const navItems: NavItem[] = [
+    { id: 'dashboard', label: 'Home', shortLabel: 'Home', icon: Home, group: 'primary' },
+    { id: 'pos', label: 'Sell', shortLabel: 'Sell', icon: ShoppingBag, group: 'primary', badge: heldBillsCount || undefined },
+    { id: 'orders', label: 'Bill book', shortLabel: 'Bills', icon: BookOpen, group: 'primary' },
+    { id: 'customers', label: 'Khata', shortLabel: 'Khata', icon: Users, group: 'primary' },
+    { id: 'stock', label: 'Stock', shortLabel: 'Stock', icon: Package, group: 'primary', badge: lowStockCount || undefined },
+    { id: 'purchasing', label: 'Suppliers', shortLabel: 'Suppliers', icon: Truck, group: 'backoffice' },
+    { id: 'expenses', label: 'Expenses', shortLabel: 'Expenses', icon: Receipt, group: 'backoffice' },
+    { id: 'cash', label: 'Cash', shortLabel: 'Cash', icon: Wallet, group: 'backoffice' },
+    { id: 'reports', label: 'Reports', shortLabel: 'Reports', icon: BarChart3, group: 'backoffice' },
+    { id: 'settings', label: 'Settings', shortLabel: 'Settings', icon: Settings, group: 'bottom' },
+  ];
 
-  function handleNav(id: NavSection) {
+  const primaryItems = navItems.filter((i) => i.group === 'primary');
+  const backOfficeItems = navItems.filter((i) => i.group === 'backoffice');
+  const settingsItem = navItems.find((i) => i.id === 'settings')!;
+
+  const mobileTabs: NavSection[] = ['dashboard', 'pos', 'orders', 'stock'];
+
+  const initials = user.name
+    .split(' ')
+    .map((p) => p[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+
+  // On Sell/POS register, desktop uses the compact 84px icon rail (matching Main.jsx!)
+  const useCompactRailOnDesktop = active === 'pos';
+
+  const handleSelect = (id: NavSection) => {
     onNavigate(id);
     setDrawerOpen(false);
-  }
-
-  const renderNavButton = (item: NavItemDef, compact = false) => {
-    const Icon = item.icon;
-    const isActive = active === item.id;
-    const badge =
-      item.id === 'stock' && lowStockCount > 0
-        ? lowStockCount
-        : item.id === 'pos' && heldBillsCount > 0
-          ? heldBillsCount
-          : null;
-
-    if (compact) {
-      return (
-        <button
-          key={item.id}
-          type="button"
-          onClick={() => handleNav(item.id)}
-          aria-current={isActive ? 'page' : undefined}
-          title={item.label}
-          className={`relative w-[66px] py-2 rounded-[12px] flex flex-col items-center justify-center gap-1 transition-colors ${
-            isActive ? 'text-[#162660] font-bold' : 'text-[#454F70] hover:bg-[#F8F2E9] font-medium'
-          }`}
-        >
-          <span
-            className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors ${
-              isActive ? 'bg-[#162660] text-white' : 'bg-[#F6F0E7] text-[#454F70]'
-            }`}
-          >
-            <Icon className="w-[18px] h-[18px]" />
-          </span>
-          <span className="text-[11px] leading-tight truncate max-w-[62px]">{item.shortLabel}</span>
-          {badge !== null && (
-            <span className="absolute top-1 right-2 min-w-[18px] h-[18px] px-1 rounded-full bg-[#B42318] text-white text-[10px] font-bold flex items-center justify-center tabular-num">
-              {badge}
-            </span>
-          )}
-        </button>
-      );
-    }
-
-    return (
-      <button
-        key={item.id}
-        type="button"
-        onClick={() => handleNav(item.id)}
-        aria-current={isActive ? 'page' : undefined}
-        className={`w-full h-11 rounded-[12px] flex items-center gap-3 px-2.5 text-left transition-colors ${
-          isActive
-            ? 'bg-[#EEF5FE] text-[#162660] font-bold'
-            : 'text-[#454F70] hover:bg-[#F8F2E9] font-medium'
-        }`}
-      >
-        <span
-          className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-colors ${
-            isActive ? 'bg-[#162660] text-white' : 'bg-[#F6F0E7] text-[#454F70]'
-          }`}
-        >
-          <Icon className="w-[17px] h-[17px]" />
-        </span>
-        <span className="flex-1 min-w-0 text-[14px] truncate">{item.label}</span>
-        {badge !== null && (
-          <span
-            className={`min-w-[22px] h-[22px] px-1.5 rounded-full text-[11px] font-bold flex items-center justify-center tabular-num ${
-              item.id === 'stock'
-                ? 'bg-[#FFF3C4] text-[#6B4E00]'
-                : 'bg-[#D0E6FD] text-[#162660]'
-            }`}
-          >
-            {badge}
-          </span>
-        )}
-      </button>
-    );
   };
 
   return (
-    <div className="min-h-screen w-full bg-[#F1E4D1] text-[#162660] flex flex-col lg:flex-row">
-      {/* Desktop Left Sidebar / Compact POS Rail */}
-      <aside
-        className={`hidden lg:flex flex-col shrink-0 bg-white border-r border-[#E9E1D5] h-screen sticky top-0 transition-all duration-200 ${
-          isCompactRail ? 'w-[84px] items-center py-3 px-2' : 'w-[252px] py-4 px-3.5'
-        }`}
-      >
-        {isCompactRail ? (
-          <>
-            <button
-              type="button"
-              onClick={() => handleNav('dashboard')}
-              title="ZYRO Retail POS — Dashboard"
-              className="mb-3"
-            >
-              <ZyroLogo size={44} />
-            </button>
-            <nav aria-label="Main navigation" className="flex-1 overflow-y-auto no-scrollbar flex flex-col items-center gap-1 w-full">
-              {NAV_ITEMS.map((item) => renderNavButton(item, true))}
-            </nav>
-            <div className="pt-2 border-t border-[#F6F0E7] w-full flex flex-col items-center gap-1.5">
-              <button
-                type="button"
-                onClick={onLogout}
-                title={`Sign out (${user.name})`}
-                className="w-[66px] py-2 rounded-[12px] hover:bg-[#FDF0EF] text-[#454F70] hover:text-[#B42318] flex flex-col items-center gap-1 transition-colors"
-              >
-                <span
-                  className="w-9 h-9 rounded-full flex items-center justify-center text-[13px] font-bold"
-                  style={{ background: user.avatarBg, color: user.avatarFg }}
-                >
-                  {getInitials(user.name)}
-                </span>
-                <span className="text-[11px] font-semibold">Sign out</span>
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            {/* Brand + Shop Selector Header */}
-            <div className="flex items-center gap-2.5 px-1.5 pb-4 mb-2 border-b border-[#F6F0E7]">
-              <ZyroLogo size={40} />
+    <div className="min-h-screen w-full bg-[#F1E4D1] text-[#162660] flex flex-col md:flex-row">
+      {/* ==================== DESKTOP FULL SIDEBAR (236px WHITE, App.jsx) ==================== */}
+      {!useCompactRailOnDesktop && (
+        <aside className="hidden xl:flex flex-col w-[236px] shrink-0 bg-white border-r border-[#E9E1D5] sticky top-0 h-screen z-30">
+          {/* Brand + Branch Dropdown */}
+          <div className="px-4 pt-4 pb-3 border-b border-[#F6F0E7] relative">
+            <div className="flex items-center gap-3">
+              <ZyroLogo size={38} />
               <div className="min-w-0 flex-1">
-                <p className="text-[15px] font-bold text-[#162660] truncate leading-tight">
+                <p className="text-[15px] font-bold text-[#162660] leading-tight truncate">
                   {settings.shopName}
                 </p>
-                <p className="text-[12px] text-[#5B6585] truncate">
-                  {settings.branchName} · ZYRO POS
-                </p>
+                <button
+                  type="button"
+                  onClick={() => setBranchMenuOpen((o) => !o)}
+                  className="mt-0.5 inline-flex items-center gap-1 text-[12px] font-medium text-[#5B6585] hover:text-[#162660] max-w-full"
+                >
+                  <span className="truncate">{settings.branchName}</span>
+                  <ChevronDown className="w-3.5 h-3.5 shrink-0" />
+                </button>
               </div>
             </div>
 
-            <nav aria-label="Main navigation" className="flex-1 overflow-y-auto space-y-4 pr-0.5">
-              <div>
-                <p className="px-2.5 mb-1.5 text-[11px] font-bold uppercase tracking-wider text-[#5B6585]">
-                  Counter & Stock
-                </p>
-                <div className="space-y-1">
-                  {NAV_ITEMS.filter((i) => i.group === 'operations').map((item) => renderNavButton(item))}
-                </div>
+            {branchMenuOpen && (
+              <div className="anim-zup absolute left-3 right-3 top-[68px] z-40 rounded-[14px] bg-white border border-[#E9E1D5] shadow-[0_12px_32px_rgba(12,20,50,0.16)] p-1.5">
+                {['Main Branch', 'DHA Branch', 'Gulberg Counter 2'].map((br) => (
+                  <button
+                    key={br}
+                    type="button"
+                    onClick={() => {
+                      setBranchMenuOpen(false);
+                      onSwitchBranch?.(br);
+                    }}
+                    className={`w-full px-3 py-2 rounded-[10px] text-left text-[13px] font-semibold flex items-center gap-2 ${
+                      settings.branchName === br
+                        ? 'bg-[#EEF5FE] text-[#162660]'
+                        : 'text-[#454F70] hover:bg-[#F6F0E7]'
+                    }`}
+                  >
+                    <Building2 className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">{br}</span>
+                  </button>
+                ))}
               </div>
-              <div>
-                <p className="px-2.5 mb-1.5 text-[11px] font-bold uppercase tracking-wider text-[#5B6585]">
-                  Sales & Ledger
-                </p>
-                <div className="space-y-1">
-                  {NAV_ITEMS.filter((i) => i.group === 'records').map((item) => renderNavButton(item))}
-                </div>
-              </div>
-              <div>
-                <p className="px-2.5 mb-1.5 text-[11px] font-bold uppercase tracking-wider text-[#5B6585]">
-                  Finance & Shop
-                </p>
-                <div className="space-y-1">
-                  {NAV_ITEMS.filter((i) => i.group === 'manage').map((item) => renderNavButton(item))}
-                </div>
-              </div>
-            </nav>
+            )}
+          </div>
 
-            {/* User Profile & Sign Out */}
-            <div className="pt-3 mt-2 border-t border-[#F6F0E7] flex items-center gap-2.5 px-1.5">
+          {/* Primary & Back Office Navigation */}
+          <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-5">
+            <div className="space-y-1">
+              {primaryItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = active === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    aria-current={isActive ? 'page' : undefined}
+                    onClick={() => handleSelect(item.id)}
+                    className={`w-full h-[46px] px-2.5 rounded-[12px] flex items-center gap-3 text-[15px] transition-colors ${
+                      isActive
+                        ? 'bg-[#EEF5FE] hover:bg-[#D0E6FD] text-[#162660] font-bold'
+                        : 'text-[#454F70] hover:bg-[#F6F0E7] hover:text-[#162660] font-medium'
+                    }`}
+                  >
+                    <span
+                      className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-colors ${
+                        isActive ? 'bg-[#162660] text-white' : 'bg-[#F6F0E7] text-[#454F70]'
+                      }`}
+                    >
+                      <Icon className="w-[17px] h-[17px]" />
+                    </span>
+                    <span className="flex-1 text-left truncate">{item.label}</span>
+                    {item.badge ? (
+                      <span
+                        className={`min-w-[22px] h-5 px-1.5 rounded-full text-[11px] font-bold flex items-center justify-center tabular-num ${
+                          item.id === 'stock'
+                            ? 'bg-[#FDF0EF] text-[#B42318]'
+                            : 'bg-[#162660] text-white'
+                        }`}
+                      >
+                        {item.badge}
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="space-y-1">
+              <p className="px-3 pb-1 text-[13px] font-medium text-[#5B6585]">Back office</p>
+              {backOfficeItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = active === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    aria-current={isActive ? 'page' : undefined}
+                    onClick={() => handleSelect(item.id)}
+                    className={`w-full h-[44px] px-2.5 rounded-[12px] flex items-center gap-3 text-[15px] transition-colors ${
+                      isActive
+                        ? 'bg-[#EEF5FE] hover:bg-[#D0E6FD] text-[#162660] font-bold'
+                        : 'text-[#454F70] hover:bg-[#F6F0E7] hover:text-[#162660] font-medium'
+                    }`}
+                  >
+                    <span
+                      className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-colors ${
+                        isActive ? 'bg-[#162660] text-white' : 'bg-[#F6F0E7] text-[#454F70]'
+                      }`}
+                    >
+                      <Icon className="w-[17px] h-[17px]" />
+                    </span>
+                    <span className="flex-1 text-left truncate">{item.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </nav>
+
+          {/* Bottom Settings + User Profile Popover */}
+          <div className="px-3 pt-2 pb-3 border-t border-[#E9E1D5] space-y-2 relative">
+            <button
+              type="button"
+              aria-current={active === 'settings' ? 'page' : undefined}
+              onClick={() => handleSelect('settings')}
+              className={`w-full h-[44px] px-2.5 rounded-[12px] flex items-center gap-3 text-[15px] transition-colors ${
+                active === 'settings'
+                  ? 'bg-[#EEF5FE] hover:bg-[#D0E6FD] text-[#162660] font-bold'
+                  : 'text-[#454F70] hover:bg-[#F6F0E7] hover:text-[#162660] font-medium'
+              }`}
+            >
               <span
-                className="w-10 h-10 rounded-full flex items-center justify-center text-[13px] font-bold shrink-0"
-                style={{ background: user.avatarBg, color: user.avatarFg }}
+                className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+                  active === 'settings' ? 'bg-[#162660] text-white' : 'bg-[#F6F0E7] text-[#454F70]'
+                }`}
               >
-                {getInitials(user.name)}
+                <Settings className="w-[17px] h-[17px]" />
               </span>
+              <span className="flex-1 text-left truncate">{settingsItem.label}</span>
+            </button>
+
+            <div className="pt-2 border-t border-[#F6F0E7] flex items-center gap-2.5 px-1">
+              <div
+                className="w-[38px] h-[38px] rounded-full flex items-center justify-center text-[13px] font-bold shrink-0"
+                style={{ backgroundColor: user.avatarBg, color: user.avatarFg }}
+              >
+                {initials}
+              </div>
               <div className="min-w-0 flex-1">
-                <p className="text-[14px] font-bold text-[#162660] truncate">{user.name}</p>
-                <p className="text-[12px] text-[#5B6585] capitalize">{user.role}</p>
+                <p className="text-[14px] font-bold text-[#162660] truncate leading-tight">
+                  {user.name}
+                </p>
+                <p className="text-[12px] text-[#5B6585] capitalize truncate">{user.role}</p>
               </div>
               <button
                 type="button"
-                onClick={onLogout}
-                title="Sign out"
-                aria-label="Sign out"
-                className="w-9 h-9 rounded-[10px] hover:bg-[#FDF0EF] text-[#5B6585] hover:text-[#B42318] flex items-center justify-center transition-colors shrink-0"
+                onClick={() => setUserMenuOpen((o) => !o)}
+                aria-label="Account actions"
+                className="w-8 h-8 rounded-full hover:bg-[#F6F0E7] text-[#5B6585] hover:text-[#162660] flex items-center justify-center shrink-0"
               >
-                <LogOut className="w-4 h-4" />
+                <MoreHorizontal className="w-4 h-4" />
               </button>
             </div>
-          </>
-        )}
+
+            {userMenuOpen && (
+              <div className="anim-zup absolute left-3 right-3 bottom-[62px] z-40 rounded-[14px] bg-white border border-[#E9E1D5] shadow-[0_14px_36px_rgba(12,20,50,0.2)] p-1.5 space-y-1">
+                {onSwitchCounter && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUserMenuOpen(false);
+                      onSwitchCounter();
+                    }}
+                    className="w-full px-3 py-2.5 rounded-[10px] text-left text-[13px] font-semibold text-[#162660] hover:bg-[#F6F0E7] flex items-center gap-2"
+                  >
+                    <KeyRound className="w-4 h-4 text-[#2E46A0]" />
+                    Switch counter (PIN)
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUserMenuOpen(false);
+                    onLogout();
+                  }}
+                  className="w-full px-3 py-2.5 rounded-[10px] text-left text-[13px] font-semibold text-[#B42318] hover:bg-[#FDF0EF] flex items-center gap-2"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Sign out
+                </button>
+              </div>
+            )}
+          </div>
+        </aside>
+      )}
+
+      {/* ==================== COMPACT 84px ICON RAIL (Tablet md..xl OR Desktop on Sell/POS) ==================== */}
+      <aside
+        className={`hidden md:flex ${
+          useCompactRailOnDesktop ? '' : 'xl:hidden'
+        } flex-col items-center w-[84px] shrink-0 bg-white border-r border-[#E9E1D5] sticky top-0 h-screen py-3 gap-1 z-30`}
+      >
+        <button
+          type="button"
+          onClick={() => handleSelect('dashboard')}
+          className="mb-2"
+          title={settings.shopName}
+        >
+          <ZyroLogo size={44} />
+        </button>
+
+        <nav className="flex-1 w-full flex flex-col items-center gap-1 overflow-y-auto no-scrollbar px-1.5">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = active === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                aria-current={isActive ? 'page' : undefined}
+                onClick={() => handleSelect(item.id)}
+                className={`relative w-[72px] min-h-[54px] py-1.5 rounded-[12px] flex flex-col items-center justify-center gap-1 transition-colors ${
+                  isActive
+                    ? 'bg-[#EEF5FE] text-[#162660] font-bold'
+                    : 'text-[#454F70] hover:bg-[#F6F0E7] hover:text-[#162660] font-medium'
+                }`}
+              >
+                <Icon className="w-5 h-5" />
+                <span className="text-[11px] leading-none truncate max-w-[66px]">
+                  {item.shortLabel}
+                </span>
+                {item.badge ? (
+                  <span
+                    className={`absolute top-1 right-1.5 min-w-[16px] h-4 px-1 rounded-full text-[10px] font-bold flex items-center justify-center tabular-num ${
+                      item.id === 'stock' ? 'bg-[#B42318] text-white' : 'bg-[#162660] text-white'
+                    }`}
+                  >
+                    {item.badge}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </nav>
+
+        <div className="pt-2 border-t border-[#F6F0E7] flex flex-col items-center gap-1.5">
+          <button
+            type="button"
+            onClick={onSwitchCounter || onLogout}
+            title={`${user.name} · Switch counter / Sign out`}
+            className="w-10 h-10 rounded-full flex items-center justify-center text-[12px] font-bold border border-[#E9E1D5]"
+            style={{ backgroundColor: user.avatarBg, color: user.avatarFg }}
+          >
+            {initials}
+          </button>
+          <button
+            type="button"
+            onClick={onLogout}
+            aria-label="Sign out"
+            title="Sign out"
+            className="w-9 h-8 rounded-[10px] text-[#5B6585] hover:bg-[#FDF0EF] hover:text-[#B42318] flex items-center justify-center"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
+        </div>
       </aside>
 
-      {/* Mobile & Tablet Top Bar */}
-      <header className="lg:hidden sticky top-0 z-30 h-14 bg-white border-b border-[#E9E1D5] px-3 sm:px-5 flex items-center gap-3 shrink-0">
+      {/* ==================== MOBILE TOP BAR (< 768px) ==================== */}
+      <header className="md:hidden sticky top-0 z-30 bg-white border-b border-[#E9E1D5] px-4 h-[60px] flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <ZyroLogo size={34} />
+          <div className="min-w-0">
+            <p className="text-[15px] font-bold text-[#162660] truncate leading-tight">
+              {settings.shopName}
+            </p>
+            <p className="text-[12px] text-[#5B6585] truncate">{settings.branchName}</p>
+          </div>
+        </div>
         <button
           type="button"
           onClick={() => setDrawerOpen(true)}
           aria-label="Open menu"
-          className="w-10 h-10 rounded-[12px] bg-[#F6F0E7] hover:bg-[#ECE4D8] text-[#162660] flex items-center justify-center shrink-0"
+          className="w-10 h-10 rounded-[12px] bg-[#F6F0E7] text-[#162660] flex items-center justify-center"
         >
           <Menu className="w-5 h-5" />
         </button>
-        <div className="flex items-center gap-2 min-w-0 flex-1">
-          <ZyroLogo size={30} />
-          <div className="min-w-0">
-            <p className="text-[14px] font-bold text-[#162660] truncate leading-tight">
-              {activeItem.label}
-            </p>
-            <p className="text-[11px] text-[#5B6585] truncate">{settings.shopName}</p>
-          </div>
-        </div>
-        {active !== 'pos' && (
-          <button
-            type="button"
-            onClick={() => handleNav('pos')}
-            className="h-9 px-3 rounded-[10px] bg-[#162660] text-white text-[13px] font-bold flex items-center gap-1.5 shrink-0 whitespace-nowrap"
-          >
-            <ShoppingBag className="w-4 h-4" />
-            <span>Sell</span>
-          </button>
-        )}
       </header>
 
-      {/* Mobile / Tablet Slide-Over Drawer */}
+      {/* ==================== MAIN CONTENT STAGE ==================== */}
+      <main className="flex-1 min-w-0 flex flex-col pb-[76px] md:pb-0">
+        {children}
+      </main>
+
+      {/* ==================== MOBILE BOTTOM 5-TAB BAR ==================== */}
+      <nav
+        aria-label="Primary mobile navigation"
+        className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-white border-t border-[#E9E1D5] px-1.5 h-[66px] grid grid-cols-5 items-center shadow-[0_-4px_16px_rgba(12,20,50,0.06)]"
+      >
+        {mobileTabs.map((tabId) => {
+          const item = navItems.find((n) => n.id === tabId)!;
+          const Icon = item.icon;
+          const isActive = active === tabId;
+          return (
+            <button
+              key={tabId}
+              type="button"
+              onClick={() => handleSelect(tabId)}
+              className={`relative h-12 rounded-[12px] flex flex-col items-center justify-center gap-0.5 ${
+                isActive ? 'text-[#162660] font-bold bg-[#EEF5FE]' : 'text-[#5B6585] font-medium'
+              }`}
+            >
+              <Icon className="w-5 h-5" />
+              <span className="text-[11px] leading-none">{item.shortLabel}</span>
+              {item.badge ? (
+                <span className="absolute top-1 right-2.5 min-w-[16px] h-4 px-1 rounded-full bg-[#B42318] text-white text-[10px] font-bold flex items-center justify-center">
+                  {item.badge}
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
+        <button
+          type="button"
+          onClick={() => setDrawerOpen(true)}
+          className={`h-12 rounded-[12px] flex flex-col items-center justify-center gap-0.5 ${
+            !mobileTabs.includes(active)
+              ? 'text-[#162660] font-bold bg-[#EEF5FE]'
+              : 'text-[#5B6585] font-medium'
+          }`}
+        >
+          <MoreHorizontal className="w-5 h-5" />
+          <span className="text-[11px] leading-none">More</span>
+        </button>
+      </nav>
+
+      {/* ==================== MOBILE MORE DRAWER ==================== */}
       {drawerOpen && (
         <div
-          className="lg:hidden fixed inset-0 z-50 bg-[#0F1B47]/45 backdrop-blur-[2px] flex"
+          className="md:hidden fixed inset-0 z-50 bg-[#0F1B47]/45 backdrop-blur-[2px] flex justify-end"
           onClick={(e) => {
             if (e.target === e.currentTarget) setDrawerOpen(false);
           }}
         >
-          <div className="w-[290px] max-w-[85vw] h-full bg-white shadow-[0_24px_64px_rgba(12,20,50,0.3)] flex flex-col p-4">
-            <div className="flex items-center justify-between gap-2 pb-4 border-b border-[#F6F0E7]">
+          <div className="anim-zdrawer w-[84%] max-w-[320px] h-full bg-white flex flex-col shadow-2xl">
+            <div className="px-4 py-4 border-b border-[#E9E1D5] flex items-center justify-between gap-2">
               <div className="flex items-center gap-2.5 min-w-0">
-                <ZyroLogo size={38} />
+                <div
+                  className="w-10 h-10 rounded-full flex items-center justify-center text-[13px] font-bold shrink-0"
+                  style={{ backgroundColor: user.avatarBg, color: user.avatarFg }}
+                >
+                  {initials}
+                </div>
                 <div className="min-w-0">
-                  <p className="text-[15px] font-bold text-[#162660] truncate">{settings.shopName}</p>
-                  <p className="text-[12px] text-[#5B6585] truncate">ZYRO Retail POS</p>
+                  <p className="text-[15px] font-bold text-[#162660] truncate">{user.name}</p>
+                  <p className="text-[12px] text-[#5B6585] capitalize">{user.role} · {settings.branchName}</p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setDrawerOpen(false)}
-                aria-label="Close navigation menu"
-                className="w-10 h-10 rounded-full bg-[#F6F0E7] text-[#454F70] flex items-center justify-center shrink-0"
+                className="w-9 h-9 rounded-full bg-[#F6F0E7] flex items-center justify-center"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <nav className="flex-1 overflow-y-auto py-3 space-y-1">
-              {NAV_ITEMS.map((item) => renderNavButton(item))}
+
+            <nav className="flex-1 overflow-y-auto p-3 space-y-1">
+              {navItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = active === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => handleSelect(item.id)}
+                    className={`w-full h-12 px-3 rounded-[12px] flex items-center gap-3 text-[15px] ${
+                      isActive
+                        ? 'bg-[#EEF5FE] text-[#162660] font-bold'
+                        : 'text-[#454F70] hover:bg-[#F6F0E7] font-medium'
+                    }`}
+                  >
+                    <span
+                      className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                        isActive ? 'bg-[#162660] text-white' : 'bg-[#F6F0E7] text-[#454F70]'
+                      }`}
+                    >
+                      <Icon className="w-4 h-4" />
+                    </span>
+                    <span className="flex-1 text-left">{item.label}</span>
+                  </button>
+                );
+              })}
             </nav>
-            <div className="pt-3 border-t border-[#F6F0E7] flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <span
-                  className="w-9 h-9 rounded-full flex items-center justify-center text-[12px] font-bold shrink-0"
-                  style={{ background: user.avatarBg, color: user.avatarFg }}
+
+            <div className="p-3 border-t border-[#E9E1D5] space-y-2">
+              {onSwitchCounter && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDrawerOpen(false);
+                    onSwitchCounter();
+                  }}
+                  className="zyro-bs w-full h-11 rounded-[12px] border border-[#D9CFC0] bg-white text-[#162660] text-[14px] font-semibold flex items-center justify-center gap-2"
                 >
-                  {getInitials(user.name)}
-                </span>
-                <div className="min-w-0">
-                  <p className="text-[14px] font-bold text-[#162660] truncate">{user.name}</p>
-                  <p className="text-[12px] text-[#5B6585] capitalize">{user.role}</p>
-                </div>
-              </div>
+                  <KeyRound className="w-4 h-4" />
+                  Switch counter (PIN)
+                </button>
+              )}
               <button
                 type="button"
-                onClick={onLogout}
-                className="h-9 px-3 rounded-[10px] bg-[#FDF0EF] text-[#B42318] text-[13px] font-semibold flex items-center gap-1.5 shrink-0"
+                onClick={() => {
+                  setDrawerOpen(false);
+                  onLogout();
+                }}
+                className="w-full h-11 rounded-[12px] bg-[#FDF0EF] text-[#B42318] text-[14px] font-bold flex items-center justify-center gap-2"
               >
                 <LogOut className="w-4 h-4" />
                 Sign out
@@ -334,56 +516,6 @@ export function AppShell({
           </div>
         </div>
       )}
-
-      {/* Main Content Area */}
-      <main className="flex-1 min-w-0 flex flex-col pb-[72px] lg:pb-0">
-        {children}
-      </main>
-
-      {/* Mobile Bottom Tab Bar (5 quick touch targets >= 44px) */}
-      <nav
-        aria-label="Mobile quick navigation"
-        className="lg:hidden fixed bottom-0 left-0 right-0 z-30 h-[66px] bg-white border-t border-[#E9E1D5] grid grid-cols-5 px-1 shadow-[0_-4px_16px_rgba(22,30,60,0.06)]"
-      >
-        {[
-          { id: 'dashboard' as NavSection, label: 'Home', icon: LayoutDashboard },
-          { id: 'pos' as NavSection, label: 'Sell', icon: ShoppingBag },
-          { id: 'stock' as NavSection, label: 'Stock', icon: Package },
-          { id: 'orders' as NavSection, label: 'Orders', icon: ReceiptText },
-        ].map((tab) => {
-          const Icon = tab.icon;
-          const isAct = active === tab.id;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => handleNav(tab.id)}
-              className={`flex flex-col items-center justify-center gap-0.5 ${
-                isAct ? 'text-[#162660] font-bold' : 'text-[#5B6585] font-medium'
-              }`}
-            >
-              <span
-                className={`w-10 h-7 rounded-full flex items-center justify-center transition-colors ${
-                  isAct ? 'bg-[#D0E6FD] text-[#162660]' : ''
-                }`}
-              >
-                <Icon className="w-[18px] h-[18px]" />
-              </span>
-              <span className="text-[11px]">{tab.label}</span>
-            </button>
-          );
-        })}
-        <button
-          type="button"
-          onClick={() => setDrawerOpen(true)}
-          className="flex flex-col items-center justify-center gap-0.5 text-[#5B6585] font-medium"
-        >
-          <span className="w-10 h-7 rounded-full flex items-center justify-center">
-            <ChevronRight className="w-[18px] h-[18px]" />
-          </span>
-          <span className="text-[11px]">More</span>
-        </button>
-      </nav>
     </div>
   );
 }

@@ -17,6 +17,7 @@ import type {
   ReturnRecord,
   Sale,
   SaleItem,
+  ShopKind,
   StaffUser,
   Supplier,
   UserRole,
@@ -148,18 +149,70 @@ export function createApiApp(): Express {
   const app = express();
   app.use(express.json({ limit: '2mb' }));
 
+  // ==================== HEALTH ====================
+  app.get('/api/health', (_req: Request, res: Response) => {
+    return res.json({ ok: true, supabaseConnected: zyroStore.isSupabaseConnected() });
+  });
+
   // ==================== AUTH ROUTES ====================
   app.post('/api/auth/login', async (req: Request, res: Response) => {
-    const email = asNonEmptyString(req.body?.email, 160);
+    const identifier = asNonEmptyString(req.body?.identifier ?? req.body?.email, 160);
     const password = typeof req.body?.password === 'string' ? req.body.password : '';
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required.' });
+    if (!identifier || !password) {
+      return res.status(400).json({ error: 'Email or mobile number and password are required.' });
     }
-    const result = await zyroStore.loginWithEmailPassword(email, password);
+    const result = await zyroStore.loginWithEmailPassword(identifier, password);
     if (!result) {
-      return res.status(401).json({ error: 'Invalid email or password.' });
+      return res.status(401).json({ error: 'Incorrect email/mobile number or password.' });
     }
     return res.json(result);
+  });
+
+  app.post('/api/auth/pin-login', async (req: Request, res: Response) => {
+    const pin = typeof req.body?.pin === 'string' ? req.body.pin.trim() : '';
+    const staffId = typeof req.body?.staffId === 'string' ? req.body.staffId.trim() : undefined;
+    const branchName = typeof req.body?.branchName === 'string' ? req.body.branchName.trim() : undefined;
+    if (!pin || pin.replace(/\D/g, '').length < 4) {
+      return res.status(400).json({ error: 'Enter your 4-digit counter PIN.' });
+    }
+    const result = await zyroStore.loginWithPin(pin, staffId, branchName);
+    if (!result) {
+      return res.status(401).json({ error: 'That PIN did not match an active counter account.' });
+    }
+    return res.json(result);
+  });
+
+  app.post('/api/auth/check-phone', async (req: Request, res: Response) => {
+    const phone = asNonEmptyString(req.body?.phone, 40);
+    if (!phone) return res.status(400).json({ error: 'Mobile number is required.' });
+    const status = await zyroStore.checkPhoneAvailability(phone);
+    return res.json(status);
+  });
+
+  app.post('/api/auth/send-otp', (req: Request, res: Response) => {
+    const target = asNonEmptyString(req.body?.target ?? req.body?.phone ?? req.body?.email, 160);
+    const purpose =
+      req.body?.purpose === 'reset' || req.body?.purpose === 'join' ? req.body.purpose : 'verify';
+    if (!target) {
+      return res.status(400).json({ error: 'Provide a valid mobile number or email address.' });
+    }
+    const issued = zyroStore.issueOtp(target, purpose);
+    return res.json({ ok: true, target: issued.target, demoCode: issued.code });
+  });
+
+  app.post('/api/auth/verify-otp', (req: Request, res: Response) => {
+    const target = asNonEmptyString(req.body?.target ?? req.body?.phone ?? req.body?.email, 160);
+    const code = typeof req.body?.code === 'string' ? req.body.code.trim() : '';
+    const purpose =
+      req.body?.purpose === 'reset' || req.body?.purpose === 'join' ? req.body.purpose : 'verify';
+    if (!target || !code) {
+      return res.status(400).json({ error: 'Verification target and 6-digit code are required.' });
+    }
+    const valid = zyroStore.verifyOtp(target, code, purpose);
+    if (!valid) {
+      return res.status(400).json({ error: 'Invalid or expired 6-digit code. Please check and try again.' });
+    }
+    return res.json({ ok: true });
   });
 
   app.post('/api/auth/register', async (req: Request, res: Response) => {
@@ -168,6 +221,22 @@ export function createApiApp(): Express {
     const password = typeof req.body?.password === 'string' ? req.body.password : '';
     const shopName = typeof req.body?.shopName === 'string' ? req.body.shopName.trim().slice(0, 120) : '';
     const phone = typeof req.body?.phone === 'string' ? req.body.phone.trim().slice(0, 40) : '';
+    const city = typeof req.body?.city === 'string' ? req.body.city.trim().slice(0, 80) : '';
+    const area = typeof req.body?.area === 'string' ? req.body.area.trim().slice(0, 120) : '';
+    const branchCount = typeof req.body?.branchCount === 'string' ? req.body.branchCount.trim().slice(0, 20) : '';
+    const showLogoOnReceipt =
+      typeof req.body?.showLogoOnReceipt === 'boolean' ? req.body.showLogoOnReceipt : undefined;
+    const allowedKinds: ShopKind[] = [
+      'clothing',
+      'shoes',
+      'pharmacy',
+      'grocery',
+      'cosmetics',
+      'jewellery',
+      'electronics',
+      'general',
+    ];
+    const shopKind = allowedKinds.includes(req.body?.shopKind) ? (req.body.shopKind as ShopKind) : undefined;
 
     if (!name || !email || !email.includes('@')) {
       return res.status(400).json({ error: 'Please provide a valid full name and email address.' });
@@ -175,9 +244,70 @@ export function createApiApp(): Express {
     if (password.length < 6) {
       return res.status(400).json({ error: 'Password must be at least 6 characters long.' });
     }
-    const result = await zyroStore.registerUser({ name, email, password, shopName, phone });
+    const result = await zyroStore.registerUser({
+      name,
+      email,
+      password,
+      shopName,
+      phone,
+      city,
+      area,
+      branchCount,
+      shopKind,
+      showLogoOnReceipt,
+    });
     if ('error' in result) {
       return res.status(409).json(result);
+    }
+    return res.status(201).json(result);
+  });
+
+  app.post('/api/auth/forgot-password', async (req: Request, res: Response) => {
+    const identifier = asNonEmptyString(req.body?.identifier ?? req.body?.email, 160);
+    if (!identifier) {
+      return res.status(400).json({ error: 'Enter your mobile number or email address.' });
+    }
+    await zyroStore.ensureHydrated();
+    const issued = zyroStore.issueOtp(identifier, 'reset');
+    return res.json({
+      ok: true,
+      demoCode: issued.code,
+      hint: 'Enter the 6-digit verification code to choose a new password.',
+    });
+  });
+
+  app.post('/api/auth/reset-password', async (req: Request, res: Response) => {
+    const identifier = asNonEmptyString(req.body?.identifier, 160);
+    const code = typeof req.body?.code === 'string' ? req.body.code.trim() : '';
+    const newPassword = typeof req.body?.newPassword === 'string' ? req.body.newPassword : '';
+    if (!identifier || !code || newPassword.length < 6) {
+      return res.status(400).json({ error: 'Provide account identifier, 6-digit code, and a 6+ character password.' });
+    }
+    const result = await zyroStore.resetPasswordWithCode(identifier, code, newPassword);
+    if ('error' in result) {
+      return res.status(400).json(result);
+    }
+    return res.json({ ok: true });
+  });
+
+  app.post('/api/auth/join-lookup', async (req: Request, res: Response) => {
+    const phone = asNonEmptyString(req.body?.phone, 40);
+    if (!phone) return res.status(400).json({ error: 'Enter the mobile number your owner invited.' });
+    const info = await zyroStore.joinLookup(phone);
+    return res.json(info);
+  });
+
+  app.post('/api/auth/join-complete', async (req: Request, res: Response) => {
+    const phone = asNonEmptyString(req.body?.phone, 40);
+    const code = typeof req.body?.code === 'string' ? req.body.code.trim() : '';
+    const pin = typeof req.body?.pin === 'string' ? req.body.pin.trim() : '';
+    const name = typeof req.body?.name === 'string' ? req.body.name.trim().slice(0, 100) : undefined;
+    if (!phone || !code || !pin) {
+      return res.status(400).json({ error: 'Phone, 6-digit SMS code, and 4-digit PIN are required.' });
+    }
+    const result = await zyroStore.completeStaffJoin({ phone, code, pin, name });
+    if ('error' in result) {
+      return res.status(400).json(result);
     }
     return res.status(201).json(result);
   });
@@ -198,6 +328,15 @@ export function createApiApp(): Express {
       sh.status === 'open' ? { ...sh, expectedCash: computeExpectedCashForShift(sh) } : sh
     );
     return res.json({ ...ws, shifts: shiftsWithLiveExpected });
+  });
+
+  app.post('/api/approvals/:id/resolve', requireAuth, requireRole(['owner', 'manager']), async (req: AuthRequest, res: Response) => {
+    const ws = zyroStore.getWorkspace();
+    const item = (ws.approvals || []).find((a) => a.id === req.params.id);
+    if (!item) return res.status(404).json({ error: 'Review item not found.' });
+    item.status = req.body?.decision === 'dismissed' ? 'dismissed' : 'approved';
+    await zyroStore.persist();
+    return res.json(item);
   });
 
   // ==================== CATEGORIES ====================
@@ -241,7 +380,39 @@ export function createApiApp(): Express {
     return res.json({ ok: true });
   });
 
+  app.get('/api/categories', requireAuth, (_req: AuthRequest, res: Response) => {
+    return res.json(zyroStore.getWorkspace().categories);
+  });
+
   // ==================== PRODUCTS ====================
+  app.get('/api/products', requireAuth, (req: AuthRequest, res: Response) => {
+    const q = typeof req.query?.q === 'string' ? req.query.q.trim().toLowerCase() : '';
+    const prods = zyroStore.getWorkspace().products;
+    if (!q) return res.json(prods);
+    return res.json(
+      prods.filter(
+        (p) =>
+          p.name.toLowerCase().includes(q) ||
+          p.sku.toLowerCase().includes(q) ||
+          p.barcode.toLowerCase().includes(q)
+      )
+    );
+  });
+
+  app.get('/api/products/lookup', requireAuth, (req: AuthRequest, res: Response) => {
+    const code = typeof req.query?.code === 'string' ? req.query.code.trim().toLowerCase() : '';
+    if (!code) return res.status(400).json({ error: 'Provide a barcode or SKU to look up.' });
+    const prod = zyroStore
+      .getWorkspace()
+      .products.find(
+        (p) =>
+          p.barcode.toLowerCase() === code ||
+          p.sku.toLowerCase() === code ||
+          p.id.toLowerCase() === code
+      );
+    return res.json({ product: prod || null });
+  });
+
   app.post('/api/products', requireAuth, async (req: AuthRequest, res: Response) => {
     const name = asNonEmptyString(req.body?.name, 140);
     const sku = asNonEmptyString(req.body?.sku, 60);
@@ -392,7 +563,70 @@ export function createApiApp(): Express {
     return res.json({ ok: true, updated });
   });
 
+  app.patch('/api/products/:id/price', requireAuth, async (req: AuthRequest, res: Response) => {
+    const ws = zyroStore.getWorkspace();
+    const prod = ws.products.find((p) => p.id === req.params.id);
+    if (!prod) return res.status(404).json({ error: 'Product not found.' });
+    const salePrice = asFiniteNumber(req.body?.salePrice, 0);
+    if (salePrice === null) return res.status(400).json({ error: 'Provide a valid sale price.' });
+    prod.salePrice = Math.round(salePrice);
+    const costPrice = asFiniteNumber(req.body?.costPrice, 0);
+    if (costPrice !== null) prod.costPrice = Math.round(costPrice);
+    prod.updatedAt = new Date().toISOString();
+    await zyroStore.persist();
+    return res.json(prod);
+  });
+
+  app.get('/api/stock/adjustments', requireAuth, (_req: AuthRequest, res: Response) => {
+    return res.json(zyroStore.getWorkspace().stockAdjustments);
+  });
+
+  app.post('/api/stock/batch-receive', requireAuth, async (req: AuthRequest, res: Response) => {
+    const items = req.body?.items;
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'Scan or add at least one item before saving the batch.' });
+    }
+    const note = asNonEmptyString(req.body?.note, 160) || 'Barcode scan-in batch';
+    const ws = zyroStore.getWorkspace();
+    let updatedCount = 0;
+    let totalUnits = 0;
+
+    for (const line of items) {
+      const prod = ws.products.find((p) => p.id === line?.productId);
+      const qty = asFiniteNumber(line?.qty, 1, 100_000);
+      if (!prod || qty === null) continue;
+      const added = Math.round(qty);
+      const prev = prod.stockQty;
+      prod.stockQty = prev + added;
+      prod.updatedAt = new Date().toISOString();
+      ws.stockAdjustments.unshift({
+        id: genId('adj'),
+        productId: prod.id,
+        productName: prod.name,
+        delta: added,
+        previousQty: prev,
+        newQty: prod.stockQty,
+        reason: note,
+        createdBy: req.user!.name,
+        createdAt: new Date().toISOString(),
+      });
+      updatedCount++;
+      totalUnits += added;
+    }
+
+    if (updatedCount === 0) {
+      return res.status(400).json({ error: 'No matching products were found in this batch.' });
+    }
+
+    await zyroStore.persist();
+    return res.status(201).json({ ok: true, updatedCount, totalUnits });
+  });
+
   // ==================== SALES & CHECKOUT ====================
+  app.get('/api/sales', requireAuth, (_req: AuthRequest, res: Response) => {
+    return res.json(zyroStore.getWorkspace().sales);
+  });
+
   app.post('/api/sales', requireAuth, async (req: AuthRequest, res: Response) => {
     const rawItems = req.body?.items;
     const paymentMethod = req.body?.paymentMethod as PaymentMethod;
@@ -986,6 +1220,8 @@ export function createApiApp(): Express {
     if (branchName) s.branchName = branchName;
     if (typeof req.body?.phone === 'string') s.phone = req.body.phone.trim().slice(0, 40);
     if (typeof req.body?.address === 'string') s.address = req.body.address.trim().slice(0, 220);
+    if (typeof req.body?.city === 'string') s.city = req.body.city.trim().slice(0, 80);
+    if (typeof req.body?.area === 'string') s.area = req.body.area.trim().slice(0, 120);
     if (typeof req.body?.currency === 'string' && req.body.currency.trim()) {
       s.currency = req.body.currency.trim().slice(0, 8);
     }
@@ -997,7 +1233,13 @@ export function createApiApp(): Express {
     if (typeof req.body?.receiptHeader === 'string') s.receiptHeader = req.body.receiptHeader.trim().slice(0, 220);
     if (typeof req.body?.receiptFooter === 'string') s.receiptFooter = req.body.receiptFooter.trim().slice(0, 220);
     if (typeof req.body?.showSkuOnReceipt === 'boolean') s.showSkuOnReceipt = req.body.showSkuOnReceipt;
-    if (req.body?.shopType && ['clothing', 'shoes', 'general', 'pharmacy', 'electronics', 'cosmetics'].includes(req.body.shopType)) {
+    if (typeof req.body?.showLogoOnReceipt === 'boolean') s.showLogoOnReceipt = req.body.showLogoOnReceipt;
+    if (
+      req.body?.shopType &&
+      ['clothing', 'shoes', 'grocery', 'general', 'pharmacy', 'electronics', 'cosmetics', 'hardware'].includes(
+        req.body.shopType
+      )
+    ) {
       s.shopType = req.body.shopType;
     }
     if (req.body?.enabledPayments && typeof req.body.enabledPayments === 'object') {
@@ -1027,6 +1269,7 @@ export function createApiApp(): Express {
     if (ws.staff.some((u) => u.email.toLowerCase() === email.toLowerCase())) {
       return res.status(409).json({ error: 'A staff member with this email already exists.' });
     }
+    const rawPin = typeof req.body?.pin === 'string' ? req.body.pin.replace(/\D/g, '').slice(0, 4) : '';
     const palette = AVATAR_PALETTES[ws.staff.length % AVATAR_PALETTES.length];
     const staff: StaffUser = {
       id: genId('usr'),
@@ -1034,7 +1277,8 @@ export function createApiApp(): Express {
       email: email.toLowerCase(),
       role,
       phone: typeof req.body?.phone === 'string' ? req.body.phone.trim().slice(0, 40) : '',
-      pin: typeof req.body?.pin === 'string' ? req.body.pin.trim().slice(0, 8) : undefined,
+      pin: rawPin.length === 4 ? rawPin : undefined,
+      branchName: ws.settings.branchName,
       active: true,
       avatarBg: palette[0],
       avatarFg: palette[1],
@@ -1054,6 +1298,10 @@ export function createApiApp(): Express {
     if (name) staff.name = name;
     if (ALLOWED_ROLES.includes(req.body?.role)) staff.role = req.body.role;
     if (typeof req.body?.phone === 'string') staff.phone = req.body.phone.trim().slice(0, 40);
+    if (typeof req.body?.pin === 'string') {
+      const digits = req.body.pin.replace(/\D/g, '').slice(0, 4);
+      if (digits.length === 4) staff.pin = digits;
+    }
     if (typeof req.body?.active === 'boolean') staff.active = req.body.active;
     await zyroStore.persist();
     return res.json(staff);

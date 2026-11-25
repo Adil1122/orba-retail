@@ -92,19 +92,19 @@ export function ExpensesView({
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-[13px] font-semibold text-[#5B6585]">
-            {workspace.settings.branchName} · Operating Costs
+            {workspace.settings.branchName} · Operating costs
           </p>
-          <h1 className="text-[26px] sm:text-[30px] font-bold text-[#162660] leading-tight">
+          <h1 className="text-[28px] sm:text-[32px] font-bold text-[#162660] leading-tight tracking-[-0.02em]">
             Expenses
           </h1>
         </div>
         <button
           type="button"
           onClick={() => setModalOpen(true)}
-          className="h-11 px-4 rounded-[12px] bg-[#162660] hover:bg-[#111E50] text-white text-[14px] font-bold inline-flex items-center gap-2"
+          className="zyro-bp h-12 px-5 rounded-[12px] bg-[#162660] hover:bg-[#111E50] text-white text-[14px] font-bold inline-flex items-center gap-2"
         >
           <Plus className="w-4 h-4" />
-          Log Expense
+          Log expense
         </button>
       </div>
 
@@ -170,13 +170,13 @@ export function ExpensesView({
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse min-w-[620px]">
               <thead>
-                <tr className="border-b border-[#F6F0E7] bg-[#F8F2E9]/70 text-[12px] font-bold uppercase tracking-wider text-[#5B6585]">
-                  <th className="py-3 px-4">Expense</th>
-                  <th className="py-3 px-3">Category</th>
-                  <th className="py-3 px-3">Paid From</th>
-                  <th className="py-3 px-3">Date</th>
-                  <th className="py-3 px-3 text-right">Amount</th>
-                  <th className="py-3 px-4 text-right">Action</th>
+                <tr className="h-[42px] border-b border-[#EFE8DC] bg-[#F8F2E9] text-[11px] font-bold uppercase tracking-[0.06em] text-[#5B6585]">
+                  <th className="px-4">Expense</th>
+                  <th className="px-3">Category</th>
+                  <th className="px-3">Paid From</th>
+                  <th className="px-3">Date</th>
+                  <th className="px-3 text-right">Amount</th>
+                  <th className="px-4 text-right">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#F6F0E7] text-[14px]">
