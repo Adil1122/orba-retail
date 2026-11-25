@@ -292,7 +292,11 @@ export function Receipt80Modal({
                   {item.qty} x {formatMoney(item.unitPrice, cur)}
                   {settings.showSkuOnReceipt ? ` · ${item.sku}` : ''}
                 </span>
-                {item.discount > 0 && <span>-{formatMoney(item.discount, cur)}</span>}
+                {item.discount > 0 && (
+                  <span>
+                    {item.offerLabel ? `${item.offerLabel} ` : ''}-{formatMoney(item.discount, cur)}
+                  </span>
+                )}
               </div>
             </div>
           ))}

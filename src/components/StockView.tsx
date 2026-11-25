@@ -12,15 +12,17 @@ import {
   Plus,
   ScanLine,
   Search,
+  Tag,
   Trash2,
 } from 'lucide-react';
 import { api } from '../lib/api.ts';
-import type { Product, WorkspacePayload } from '../types/pos.ts';
+import type { OfferType, Product, ProductOffer, WorkspacePayload } from '../types/pos.ts';
 import { formatDateTime, formatMoney } from '../lib/format.ts';
+import { formatOfferBadge, getEffectiveUnitPrice, isOfferActive } from '../lib/offers.ts';
 import { Modal, SlideDrawer } from './BrandMark.tsx';
 import { ProductArtThumb } from './ProductArt.tsx';
 
-type StockFilter = 'all' | 'out' | 'low' | 'in';
+type StockFilter = 'all' | 'offer' | 'out' | 'low' | 'in';
 
 interface BatchLine {
   product: Product;
@@ -53,6 +55,7 @@ export function StockView({
   // Stock List Filters
   const [statusTab, setStatusTab] = useState<StockFilter>('all');
   const [catFilter, setCatFilter] = useState<string>('all');
+  const [subcatFilter, setSubcatFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
 
   // Slide-over Stock Detail Drawer (Stock.jsx)
@@ -61,6 +64,11 @@ export function StockView({
   const [quickReason, setQuickReason] = useState('Shelf restock');
   const [quickSalePrice, setQuickSalePrice] = useState('');
   const [quickCostPrice, setQuickCostPrice] = useState('');
+  const [drawerOfferActive, setDrawerOfferActive] = useState(false);
+  const [drawerOfferType, setDrawerOfferType] = useState<OfferType>('percent');
+  const [drawerOfferValue, setDrawerOfferValue] = useState('10');
+  const [drawerOfferLabel, setDrawerOfferLabel] = useState('');
+  const [drawerOfferEndsAt, setDrawerOfferEndsAt] = useState('');
   const [busyDrawer, setBusyDrawer] = useState(false);
 
   // Product Editor Modal
@@ -70,6 +78,7 @@ export function StockView({
   const [formSku, setFormSku] = useState('');
   const [formBarcode, setFormBarcode] = useState('');
   const [formCatId, setFormCatId] = useState(workspace.categories[0]?.id || '');
+  const [formSubcat, setFormSubcat] = useState('');
   const [formVariant, setFormVariant] = useState('');
   const [formUnit, setFormUnit] = useState('pcs');
   const [formCost, setFormCost] = useState('');
@@ -77,6 +86,11 @@ export function StockView({
   const [formQty, setFormQty] = useState('');
   const [formMin, setFormMin] = useState('5');
   const [formSwatch, setFormSwatch] = useState('#162660');
+  const [formOfferActive, setFormOfferActive] = useState(false);
+  const [formOfferType, setFormOfferType] = useState<OfferType>('percent');
+  const [formOfferValue, setFormOfferValue] = useState('10');
+  const [formOfferLabel, setFormOfferLabel] = useState('');
+  const [formOfferEndsAt, setFormOfferEndsAt] = useState('');
   const [savingProduct, setSavingProduct] = useState(false);
 
   // Stock Count Modal
@@ -88,6 +102,7 @@ export function StockView({
   const [catModalOpen, setCatModalOpen] = useState(false);
   const [newCatName, setNewCatName] = useState('');
   const [newCatDesc, setNewCatDesc] = useState('');
+  const [newCatSubcats, setNewCatSubcats] = useState('');
   const [newCatColor, setNewCatColor] = useState('#162660');
 
   useEffect(() => {
@@ -100,9 +115,24 @@ export function StockView({
     }
   }, [addStockMode]);
 
+  const catMap = useMemo(
+    () => new Map(workspace.categories.map((c) => [c.id, c])),
+    [workspace.categories]
+  );
+
   const catNameMap = useMemo(
     () => new Map(workspace.categories.map((c) => [c.id, c.name])),
     [workspace.categories]
+  );
+
+  const activeFilterCategory = useMemo(
+    () => (catFilter !== 'all' ? catMap.get(catFilter) || null : null),
+    [catMap, catFilter]
+  );
+
+  const selectedFormCategory = useMemo(
+    () => catMap.get(formCatId) || null,
+    [catMap, formCatId]
   );
 
   const drawerProduct = useMemo(
@@ -116,6 +146,11 @@ export function StockView({
       setQuickCostPrice(String(drawerProduct.costPrice));
       setQuickDelta('5');
       setQuickReason('Shelf restock');
+      setDrawerOfferActive(Boolean(drawerProduct.offer?.active));
+      setDrawerOfferType(drawerProduct.offer?.type || 'percent');
+      setDrawerOfferValue(String(drawerProduct.offer?.value ?? 10));
+      setDrawerOfferLabel(drawerProduct.offer?.label || '');
+      setDrawerOfferEndsAt(drawerProduct.offer?.endsAt ? drawerProduct.offer.endsAt.slice(0, 10) : '');
     }
   }, [drawerProduct]);
 
@@ -123,33 +158,54 @@ export function StockView({
     const out = workspace.products.filter((p) => p.stockQty === 0).length;
     const low = workspace.products.filter((p) => p.stockQty > 0 && p.stockQty <= p.minStock).length;
     const healthy = workspace.products.filter((p) => p.stockQty > p.minStock).length;
+    const offers = workspace.products.filter((p) => isOfferActive(p.offer)).length;
     const totalUnits = workspace.products.reduce((a, p) => a + p.stockQty, 0);
-    return { all: workspace.products.length, out, low, in: healthy, totalUnits };
+    return { all: workspace.products.length, offer: offers, out, low, in: healthy, totalUnits };
   }, [workspace.products]);
 
   const filteredProducts = useMemo(() => {
     const q = search.trim().toLowerCase();
     return workspace.products.filter((p) => {
+      if (statusTab === 'offer' && !isOfferActive(p.offer)) return false;
       if (statusTab === 'out' && p.stockQty !== 0) return false;
       if (statusTab === 'low' && !(p.stockQty > 0 && p.stockQty <= p.minStock)) return false;
       if (statusTab === 'in' && p.stockQty <= p.minStock) return false;
       if (catFilter !== 'all' && p.categoryId !== catFilter) return false;
+      if (subcatFilter !== 'all' && (p.subcategory || '').toLowerCase() !== subcatFilter.toLowerCase()) {
+        return false;
+      }
       if (!q) return true;
       return (
         p.name.toLowerCase().includes(q) ||
         p.sku.toLowerCase().includes(q) ||
         p.barcode.toLowerCase().includes(q) ||
-        p.variant.toLowerCase().includes(q)
+        p.variant.toLowerCase().includes(q) ||
+        (p.subcategory || '').toLowerCase().includes(q)
       );
     });
-  }, [workspace.products, statusTab, catFilter, search]);
+  }, [workspace.products, statusTab, catFilter, subcatFilter, search]);
+
+  function handleFormCategoryChange(nextCatId: string) {
+    setFormCatId(nextCatId);
+    const nextCat = catMap.get(nextCatId);
+    if (nextCat?.subcategories && nextCat.subcategories.length > 0) {
+      if (!nextCat.subcategories.includes(formSubcat)) {
+        setFormSubcat(nextCat.subcategories[0]);
+      }
+    } else {
+      setFormSubcat('');
+    }
+  }
 
   function openNewItemModal(prefillBarcode = '') {
+    const defaultCat =
+      (catFilter !== 'all' ? catMap.get(catFilter) : null) || workspace.categories[0] || null;
     setEditingId(null);
     setFormName('');
     setFormSku(`ZYR-${100 + workspace.products.length + 1}`);
     setFormBarcode(prefillBarcode || `8964${Math.floor(1000000 + Math.random() * 8999999)}`);
-    setFormCatId(workspace.categories[0]?.id || '');
+    setFormCatId(defaultCat?.id || '');
+    setFormSubcat(defaultCat?.subcategories?.[0] || '');
     setFormVariant('Standard');
     setFormUnit('pcs');
     setFormCost('1500');
@@ -157,15 +213,22 @@ export function StockView({
     setFormQty('10');
     setFormMin('5');
     setFormSwatch('#162660');
+    setFormOfferActive(false);
+    setFormOfferType('percent');
+    setFormOfferValue('10');
+    setFormOfferLabel('');
+    setFormOfferEndsAt('');
     setEditorOpen(true);
   }
 
   function openEditItemModal(p: Product) {
+    const cat = catMap.get(p.categoryId);
     setEditingId(p.id);
     setFormName(p.name);
     setFormSku(p.sku);
     setFormBarcode(p.barcode);
     setFormCatId(p.categoryId);
+    setFormSubcat(p.subcategory || (cat?.subcategories?.[0] ?? ''));
     setFormVariant(p.variant);
     setFormUnit(p.unit);
     setFormCost(String(p.costPrice));
@@ -173,6 +236,11 @@ export function StockView({
     setFormQty(String(p.stockQty));
     setFormMin(String(p.minStock));
     setFormSwatch(p.swatch);
+    setFormOfferActive(Boolean(p.offer?.active));
+    setFormOfferType(p.offer?.type || 'percent');
+    setFormOfferValue(String(p.offer?.value ?? 10));
+    setFormOfferLabel(p.offer?.label || '');
+    setFormOfferEndsAt(p.offer?.endsAt ? p.offer.endsAt.slice(0, 10) : '');
     setEditorOpen(true);
   }
 
@@ -180,11 +248,24 @@ export function StockView({
     e.preventDefault();
     setSavingProduct(true);
     try {
+      const offerPayload: ProductOffer | null = formOfferActive
+        ? {
+            active: true,
+            type: formOfferType,
+            value:
+              formOfferType === 'bogo'
+                ? Math.max(10, Math.min(100, Number(formOfferValue) || 100))
+                : Math.max(0, Number(formOfferValue) || 0),
+            ...(formOfferLabel.trim() ? { label: formOfferLabel.trim() } : {}),
+            ...(formOfferEndsAt.trim() ? { endsAt: formOfferEndsAt.trim() } : {}),
+          }
+        : null;
       const payload = {
         name: formName.trim(),
         sku: formSku.trim(),
         barcode: formBarcode.trim(),
         categoryId: formCatId,
+        subcategory: formSubcat.trim() || null,
         variant: formVariant.trim(),
         unit: formUnit.trim() || 'pcs',
         costPrice: Number(formCost) || 0,
@@ -192,6 +273,7 @@ export function StockView({
         stockQty: Number(formQty) || 0,
         minStock: Number(formMin) || 5,
         swatch: formSwatch,
+        offer: offerPayload,
       };
       if (editingId) {
         await api.updateProduct(editingId, payload);
@@ -241,6 +323,33 @@ export function StockView({
       notify('ok', `Updated pricing for ${drawerProduct.name}`);
     } catch (err) {
       notify('err', err instanceof Error ? err.message : 'Price update failed.');
+    } finally {
+      setBusyDrawer(false);
+    }
+  }
+
+  async function handleDrawerOfferSave(clear = false) {
+    if (!drawerProduct) return;
+    setBusyDrawer(true);
+    try {
+      const payload: ProductOffer | null =
+        clear || !drawerOfferActive
+          ? null
+          : {
+              active: true,
+              type: drawerOfferType,
+              value:
+                drawerOfferType === 'bogo'
+                  ? Math.max(10, Math.min(100, Number(drawerOfferValue) || 100))
+                  : Math.max(0, Number(drawerOfferValue) || 0),
+              ...(drawerOfferLabel.trim() ? { label: drawerOfferLabel.trim() } : {}),
+              ...(drawerOfferEndsAt.trim() ? { endsAt: drawerOfferEndsAt.trim() } : {}),
+            };
+      await api.updateProductOffer(drawerProduct.id, payload);
+      await onRefresh();
+      notify('ok', payload ? `Saved offer on ${drawerProduct.name}` : `Removed offer from ${drawerProduct.name}`);
+    } catch (err) {
+      notify('err', err instanceof Error ? err.message : 'Offer update failed.');
     } finally {
       setBusyDrawer(false);
     }
@@ -341,19 +450,174 @@ export function StockView({
     e.preventDefault();
     if (!newCatName.trim()) return;
     try {
+      const subcategories = newCatSubcats
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
       await api.createCategory({
         name: newCatName.trim(),
         color: newCatColor,
         description: newCatDesc.trim(),
+        ...(subcategories.length > 0 ? { subcategories } : {}),
       });
       await onRefresh();
       setNewCatName('');
       setNewCatDesc('');
+      setNewCatSubcats('');
       notify('ok', 'Category added.');
     } catch (err) {
       notify('err', err instanceof Error ? err.message : 'Failed to create category.');
     }
   }
+
+  const formOfferPreview = useMemo(() => {
+    if (!formOfferActive) return null;
+    const saleNum = Number(formSale) || 0;
+    const draft: ProductOffer = {
+      active: true,
+      type: formOfferType,
+      value: formOfferType === 'bogo' ? Number(formOfferValue) || 100 : Number(formOfferValue) || 0,
+      label: formOfferLabel.trim() || undefined,
+      endsAt: formOfferEndsAt.trim() || undefined,
+    };
+    return {
+      badge: formatOfferBadge(draft, cur),
+      effectivePrice: getEffectiveUnitPrice({ salePrice: saleNum, offer: draft }),
+    };
+  }, [formOfferActive, formOfferType, formOfferValue, formOfferLabel, formOfferEndsAt, formSale, cur]);
+
+  const subcategoryAndOfferFields = (
+    <>
+      {selectedFormCategory?.subcategories && selectedFormCategory.subcategories.length > 0 && (
+        <div className="rounded-[14px] bg-[#F8F2E9] border border-[#E9E1D5] p-3">
+          <label className="block text-[12px] font-bold uppercase tracking-wider text-[#5B6585] mb-2">
+            {selectedFormCategory.name} sub-category
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {selectedFormCategory.subcategories.map((sub) => (
+              <button
+                key={sub}
+                type="button"
+                onClick={() => setFormSubcat(sub)}
+                className={`h-9 px-4 rounded-full text-[13px] font-bold transition-colors ${
+                  formSubcat === sub
+                    ? 'bg-[#162660] text-white'
+                    : 'bg-white border border-[#D9CFC0] text-[#454F70] hover:bg-[#EEF5FE]'
+                }`}
+              >
+                {sub}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="rounded-[14px] bg-[#F8F2E9] border border-[#E9E1D5] p-3.5 space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <label className="inline-flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={formOfferActive}
+              onChange={(e) => setFormOfferActive(e.target.checked)}
+              className="w-4 h-4 accent-[#162660] rounded"
+            />
+            <span className="text-[13px] font-bold text-[#162660] inline-flex items-center gap-1.5">
+              <Tag className="w-3.5 h-3.5 text-[#2E46A0]" />
+              Product Offer / Promotion
+            </span>
+          </label>
+          {formOfferPreview?.badge && (
+            <span className="px-2.5 py-0.5 rounded-full bg-[#162660] text-[#D0E6FD] text-[11px] font-bold">
+              {formOfferPreview.badge}
+            </span>
+          )}
+        </div>
+
+        {formOfferActive && (
+          <div className="space-y-2.5 pt-1">
+            <div className="grid grid-cols-3 gap-2">
+              {(
+                [
+                  { id: 'percent', label: '% Off' },
+                  { id: 'fixed', label: `Flat ${cur} Off` },
+                  { id: 'bogo', label: 'Buy 1 Get 2nd' },
+                ] as { id: OfferType; label: string }[]
+              ).map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => {
+                    setFormOfferType(opt.id);
+                    if (opt.id === 'bogo') setFormOfferValue('50');
+                    else if (opt.id === 'percent') setFormOfferValue('15');
+                    else setFormOfferValue('500');
+                  }}
+                  className={`h-9 rounded-[10px] text-[12px] font-bold border transition-colors ${
+                    formOfferType === opt.id
+                      ? 'bg-[#162660] text-white border-[#162660]'
+                      : 'bg-white text-[#454F70] border-[#D9CFC0]'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <div>
+                <label className="block text-[11px] font-semibold text-[#5B6585] mb-1">
+                  {formOfferType === 'percent'
+                    ? 'Discount (%)'
+                    : formOfferType === 'fixed'
+                      ? `Discount (${cur})`
+                      : '2nd Item Off (%)'}
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={formOfferType === 'fixed' ? 1000000 : 100}
+                  value={formOfferValue}
+                  onChange={(e) => setFormOfferValue(e.target.value)}
+                  className="zyro-field w-full h-10 rounded-[10px] border bg-white px-3 font-bold tabular-num focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold text-[#5B6585] mb-1">
+                  Offer badge label
+                </label>
+                <input
+                  type="text"
+                  value={formOfferLabel}
+                  onChange={(e) => setFormOfferLabel(e.target.value)}
+                  placeholder="e.g. Eid Sale 15% OFF"
+                  className="zyro-field w-full h-10 rounded-[10px] border bg-white px-3 text-[13px] focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold text-[#5B6585] mb-1">
+                  Valid until (optional)
+                </label>
+                <input
+                  type="date"
+                  value={formOfferEndsAt}
+                  onChange={(e) => setFormOfferEndsAt(e.target.value)}
+                  className="zyro-field w-full h-10 rounded-[10px] border bg-white px-2.5 text-[12px] focus:outline-none"
+                />
+              </div>
+            </div>
+            {formOfferPreview && Number(formSale) > 0 && formOfferType !== 'bogo' && (
+              <p className="text-[12px] text-[#14532D] font-semibold">
+                POS price preview:{' '}
+                <span className="line-through text-[#5B6585] mr-1.5">
+                  {formatMoney(Number(formSale), cur)}
+                </span>
+                <span className="font-bold">{formatMoney(formOfferPreview.effectivePrice, cur)}</span>
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    </>
+  );
 
   // =========================================================================
   // SUB-VIEW: ADD STOCK (BARCODE SCAN-IN BATCH — AddStock.jsx)
@@ -634,7 +898,7 @@ export function StockView({
                 <label className="block text-[13px] font-semibold text-[#162660] mb-1">Category</label>
                 <select
                   value={formCatId}
-                  onChange={(e) => setFormCatId(e.target.value)}
+                  onChange={(e) => handleFormCategoryChange(e.target.value)}
                   className="zyro-field w-full h-11 rounded-[12px] border bg-white px-3 text-[14px] focus:outline-none"
                 >
                   {workspace.categories.map((c) => (
@@ -654,6 +918,7 @@ export function StockView({
                 />
               </div>
             </div>
+            {subcategoryAndOfferFields}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div>
                 <label className="block text-[12px] font-semibold text-[#5B6585] mb-1">Cost ({cur})</label>
@@ -760,6 +1025,7 @@ export function StockView({
           {(
             [
               { id: 'all', label: 'All', count: counts.all },
+              { id: 'offer', label: 'On offer', count: counts.offer },
               { id: 'out', label: 'Sold out', count: counts.out },
               { id: 'low', label: 'Running low', count: counts.low },
               { id: 'in', label: 'In stock', count: counts.in },
@@ -787,39 +1053,81 @@ export function StockView({
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search name, SKU, barcode..."
+            placeholder="Search name, SKU, barcode, Men/Women/Kids..."
             className="flex-1 h-full bg-transparent text-[14px] focus:outline-none"
           />
         </div>
       </div>
 
       {/* Category Filter Chips */}
-      <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-0.5">
-        <button
-          type="button"
-          onClick={() => setCatFilter('all')}
-          className={`h-[38px] px-4 rounded-full text-[13px] font-bold whitespace-nowrap shrink-0 ${
-            catFilter === 'all'
-              ? 'bg-[#162660] text-white'
-              : 'bg-white border border-[#E9E1D5] text-[#454F70] hover:bg-[#F8F2E9]'
-          }`}
-        >
-          All categories
-        </button>
-        {workspace.categories.map((cat) => (
+      <div className="space-y-2">
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-0.5">
           <button
-            key={cat.id}
             type="button"
-            onClick={() => setCatFilter(cat.id)}
+            onClick={() => {
+              setCatFilter('all');
+              setSubcatFilter('all');
+            }}
             className={`h-[38px] px-4 rounded-full text-[13px] font-bold whitespace-nowrap shrink-0 ${
-              catFilter === cat.id
+              catFilter === 'all'
                 ? 'bg-[#162660] text-white'
                 : 'bg-white border border-[#E9E1D5] text-[#454F70] hover:bg-[#F8F2E9]'
             }`}
           >
-            {cat.name}
+            All categories
           </button>
-        ))}
+          {workspace.categories.map((cat) => (
+            <button
+              key={cat.id}
+              type="button"
+              onClick={() => {
+                setCatFilter(cat.id);
+                setSubcatFilter('all');
+              }}
+              className={`h-[38px] px-4 rounded-full text-[13px] font-bold whitespace-nowrap shrink-0 ${
+                catFilter === cat.id
+                  ? 'bg-[#162660] text-white'
+                  : 'bg-white border border-[#E9E1D5] text-[#454F70] hover:bg-[#F8F2E9]'
+              }`}
+            >
+              {cat.name}
+            </button>
+          ))}
+        </div>
+
+        {/* Sub-category Pills (e.g. Men / Women / Kids for Footwear & Bags) */}
+        {activeFilterCategory?.subcategories && activeFilterCategory.subcategories.length > 0 && (
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+            <span className="text-[12px] font-bold text-[#5B6585] shrink-0">
+              {activeFilterCategory.name}:
+            </span>
+            <button
+              type="button"
+              onClick={() => setSubcatFilter('all')}
+              className={`h-[32px] px-3.5 rounded-full text-[12px] font-bold whitespace-nowrap shrink-0 ${
+                subcatFilter === 'all'
+                  ? 'bg-[#D0E6FD] text-[#162660]'
+                  : 'bg-white border border-[#E9E1D5] text-[#454F70] hover:bg-[#F8F2E9]'
+              }`}
+            >
+              All
+            </button>
+            {activeFilterCategory.subcategories.map((sub) => (
+              <button
+                key={sub}
+                type="button"
+                onClick={() => setSubcatFilter(sub)}
+                className={`h-[32px] px-3.5 rounded-full text-[12px] font-bold whitespace-nowrap shrink-0 ${
+                  subcatFilter === sub
+                    ? 'bg-[#D0E6FD] text-[#162660]'
+                    : 'bg-white border border-[#E9E1D5] text-[#454F70] hover:bg-[#F8F2E9]'
+                }`}
+              >
+                {sub}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Main White Table (rounded-[18px], #F8F2E9 42px header, horizontal stock health bar) */}
@@ -867,15 +1175,43 @@ export function StockView({
                       </div>
                     </td>
                     <td className="px-4 py-3 text-[13px] font-medium text-[#454F70]">
-                      {catNameMap.get(p.categoryId) || 'General'}
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span>{catNameMap.get(p.categoryId) || 'General'}</span>
+                        {p.subcategory && (
+                          <span className="px-2 py-0.5 rounded-full bg-[#EEF5FE] text-[#24398A] text-[11px] font-bold">
+                            {p.subcategory}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <p className="num text-[14px] font-bold text-[#162660]">
-                        {formatMoney(p.salePrice, cur)}
-                      </p>
-                      <p className="num text-[11px] text-[#5B6585]">
-                        Cost {formatMoney(p.costPrice, cur)}
-                      </p>
+                      {isOfferActive(p.offer) ? (
+                        <div>
+                          <div className="inline-flex items-center gap-1 justify-end">
+                            <span className="px-1.5 py-0.5 rounded bg-[#162660] text-[#D0E6FD] text-[10px] font-bold">
+                              {formatOfferBadge(p.offer, cur)}
+                            </span>
+                            <span className="num text-[14px] font-bold text-[#162660]">
+                              {formatMoney(getEffectiveUnitPrice(p), cur)}
+                            </span>
+                          </div>
+                          <p className="num text-[11px] text-[#5B6585]">
+                            {getEffectiveUnitPrice(p) < p.salePrice && (
+                              <span className="line-through mr-1.5">{formatMoney(p.salePrice, cur)}</span>
+                            )}
+                            Cost {formatMoney(p.costPrice, cur)}
+                          </p>
+                        </div>
+                      ) : (
+                        <>
+                          <p className="num text-[14px] font-bold text-[#162660]">
+                            {formatMoney(p.salePrice, cur)}
+                          </p>
+                          <p className="num text-[11px] text-[#5B6585]">
+                            Cost {formatMoney(p.costPrice, cur)}
+                          </p>
+                        </>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <div className="h-2.5 w-full rounded-full bg-[#ECE4D8] overflow-hidden">
@@ -959,15 +1295,28 @@ export function StockView({
                 svgSize={48}
               />
               <div>
-                <p className="text-[13px] text-[#5B6585]">
-                  {catNameMap.get(drawerProduct.categoryId)} · {drawerProduct.variant}
-                </p>
+                <div className="flex flex-wrap items-center gap-1.5 text-[13px] text-[#5B6585]">
+                  <span>{catNameMap.get(drawerProduct.categoryId)}</span>
+                  {drawerProduct.subcategory && (
+                    <span className="px-2 py-0.5 rounded-full bg-[#D0E6FD] text-[#162660] text-[11px] font-bold">
+                      {drawerProduct.subcategory}
+                    </span>
+                  )}
+                  <span>· {drawerProduct.variant}</span>
+                </div>
                 <p className="num text-[26px] font-bold text-[#162660] leading-tight">
                   {drawerProduct.stockQty} {drawerProduct.unit}
                 </p>
-                <p className="text-[12px] text-[#5B6585]">
-                  Reorder alert at {drawerProduct.minStock} {drawerProduct.unit}
-                </p>
+                <div className="flex flex-wrap items-center gap-2 mt-0.5">
+                  <p className="text-[12px] text-[#5B6585]">
+                    Reorder alert at {drawerProduct.minStock} {drawerProduct.unit}
+                  </p>
+                  {isOfferActive(drawerProduct.offer) && (
+                    <span className="px-2 py-0.5 rounded-full bg-[#162660] text-[#D0E6FD] text-[11px] font-bold">
+                      {formatOfferBadge(drawerProduct.offer, cur)}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -1053,6 +1402,90 @@ export function StockView({
                 <Check className="w-4 h-4" />
                 Save new price
               </button>
+            </div>
+
+            {/* Quick Product Offer Update (PATCH /api/products/:id/offer) */}
+            <div className="rounded-[16px] border border-[#E9E1D5] p-4 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-[15px] font-bold text-[#162660] inline-flex items-center gap-1.5">
+                  <Tag className="w-4 h-4 text-[#2E46A0]" />
+                  Product offer
+                </h3>
+                <label className="inline-flex items-center gap-1.5 text-[12px] font-bold text-[#162660] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={drawerOfferActive}
+                    onChange={(e) => setDrawerOfferActive(e.target.checked)}
+                    className="w-4 h-4 accent-[#162660]"
+                  />
+                  Active
+                </label>
+              </div>
+
+              {drawerOfferActive && (
+                <div className="space-y-2.5">
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {(
+                      [
+                        { id: 'percent', label: '% Off' },
+                        { id: 'fixed', label: `${cur} Off` },
+                        { id: 'bogo', label: 'BOGO' },
+                      ] as { id: OfferType; label: string }[]
+                    ).map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setDrawerOfferType(opt.id)}
+                        className={`h-8 rounded-[8px] text-[12px] font-bold border ${
+                          drawerOfferType === opt.id
+                            ? 'bg-[#162660] text-white border-[#162660]'
+                            : 'bg-[#F8F2E9] text-[#454F70] border-[#D9CFC0]'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="number"
+                      min={1}
+                      value={drawerOfferValue}
+                      onChange={(e) => setDrawerOfferValue(e.target.value)}
+                      placeholder="Value"
+                      className="zyro-field h-9 rounded-[10px] border px-3 font-bold tabular-num focus:outline-none"
+                    />
+                    <input
+                      type="text"
+                      value={drawerOfferLabel}
+                      onChange={(e) => setDrawerOfferLabel(e.target.value)}
+                      placeholder="Badge (optional)"
+                      className="zyro-field h-9 rounded-[10px] border px-3 text-[13px] focus:outline-none"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={busyDrawer}
+                  onClick={() => handleDrawerOfferSave(false)}
+                  className="zyro-bp flex-1 h-9 rounded-[10px] bg-[#162660] text-white text-[13px] font-bold"
+                >
+                  Save offer
+                </button>
+                {isOfferActive(drawerProduct.offer) && (
+                  <button
+                    type="button"
+                    disabled={busyDrawer}
+                    onClick={() => handleDrawerOfferSave(true)}
+                    className="h-9 px-3 rounded-[10px] bg-[#FDF0EF] text-[#B42318] text-[12px] font-bold"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Recent Stock Adjustments for this Product */}
@@ -1153,7 +1586,7 @@ export function StockView({
               <label className="block text-[13px] font-semibold text-[#162660] mb-1">Category</label>
               <select
                 value={formCatId}
-                onChange={(e) => setFormCatId(e.target.value)}
+                onChange={(e) => handleFormCategoryChange(e.target.value)}
                 className="zyro-field w-full h-11 rounded-[12px] border bg-white px-3 text-[14px] focus:outline-none"
               >
                 {workspace.categories.map((c) => (
@@ -1173,6 +1606,7 @@ export function StockView({
               />
             </div>
           </div>
+          {subcategoryAndOfferFields}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div>
               <label className="block text-[12px] font-semibold text-[#5B6585] mb-1">Cost ({cur})</label>
@@ -1321,33 +1755,80 @@ export function StockView({
               placeholder="Short description (optional)"
               className="zyro-field w-full h-9 rounded-[10px] border bg-white px-3 text-[13px] focus:outline-none"
             />
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="text"
+                value={newCatSubcats}
+                onChange={(e) => setNewCatSubcats(e.target.value)}
+                placeholder="Sub-categories (e.g. Men, Women, Kids)"
+                className="zyro-field flex-1 min-w-[180px] h-9 rounded-[10px] border bg-white px-3 text-[13px] focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => setNewCatSubcats('Men, Women, Kids')}
+                className="h-9 px-3 rounded-[10px] bg-[#EEF5FE] hover:bg-[#D0E6FD] text-[#162660] text-[12px] font-bold shrink-0"
+              >
+                + Men / Women / Kids
+              </button>
+            </div>
           </form>
 
           <div className="divide-y divide-[#F6F0E7] border border-[#E9E1D5] rounded-[14px] overflow-hidden">
             {workspace.categories.map((c) => (
               <div key={c.id} className="px-4 py-3 flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <span className="w-3.5 h-3.5 rounded-full shrink-0" style={{ backgroundColor: c.color }} />
+                <div className="flex items-start gap-2.5 min-w-0">
+                  <span className="w-3.5 h-3.5 rounded-full shrink-0 mt-1" style={{ backgroundColor: c.color }} />
                   <div className="min-w-0">
                     <p className="text-[14px] font-bold text-[#162660] truncate">{c.name}</p>
                     {c.description && <p className="text-[12px] text-[#5B6585] truncate">{c.description}</p>}
+                    {c.subcategories && c.subcategories.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {c.subcategories.map((sub) => (
+                          <span
+                            key={sub}
+                            className="px-2 py-0.5 rounded-full bg-[#EEF5FE] text-[#24398A] text-[11px] font-bold"
+                          >
+                            {sub}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    try {
-                      await api.deleteCategory(c.id);
-                      await onRefresh();
-                      notify('ok', `Deleted ${c.name}`);
-                    } catch (err) {
-                      notify('err', err instanceof Error ? err.message : 'Delete failed.');
-                    }
-                  }}
-                  className="w-8 h-8 rounded-[8px] hover:bg-[#FDF0EF] text-[#B42318] flex items-center justify-center"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {(!c.subcategories || c.subcategories.length === 0) && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          await api.updateCategory(c.id, { subcategories: ['Men', 'Women', 'Kids'] });
+                          await onRefresh();
+                          notify('ok', `Added Men / Women / Kids to ${c.name}`);
+                        } catch (err) {
+                          notify('err', err instanceof Error ? err.message : 'Update failed.');
+                        }
+                      }}
+                      className="h-8 px-2.5 rounded-[8px] bg-[#F8F2E9] hover:bg-[#EEF5FE] text-[#2E46A0] text-[11px] font-bold"
+                    >
+                      + M/W/K
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await api.deleteCategory(c.id);
+                        await onRefresh();
+                        notify('ok', `Deleted ${c.name}`);
+                      } catch (err) {
+                        notify('err', err instanceof Error ? err.message : 'Delete failed.');
+                      }
+                    }}
+                    className="w-8 h-8 rounded-[8px] hover:bg-[#FDF0EF] text-[#B42318] flex items-center justify-center"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             ))}
           </div>

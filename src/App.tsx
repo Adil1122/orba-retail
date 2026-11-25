@@ -129,7 +129,7 @@ export default function App() {
     if (initialRoute.kind === 'section' && initialRoute.roleHint === 'stock') {
       return 'stock@zyropos.app';
     }
-    return 'owner@zyropos.app';
+    return '03465629140';
   });
   const [receiptSale, setReceiptSale] = useState<Sale | null>(null);
   const [toast, setToast] = useState<{ type: 'ok' | 'err'; message: string } | null>(null);

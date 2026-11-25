@@ -51,16 +51,16 @@ const SHOP_KINDS: {
   {
     id: 'clothing',
     label: 'Clothing & Apparel',
-    desc: 'Unstitched, pret, kurtas & seasonal wear',
-    cats: ['Unstitched', 'Ready to Wear', 'Footwear', 'Accessories'],
+    desc: 'Unstitched, pret, footwear, bags & accessories',
+    cats: ['Unstitched', 'Footwear (M/W/K)', 'Bags (M/W/K)'],
     tintBg: '#EAF2FD',
     tintFg: '#24398A',
   },
   {
     id: 'shoes',
-    label: 'Footwear',
-    desc: 'Loafers, chappals, sneakers & khussas',
-    cats: ['Men Footwear', 'Women Footwear', 'Sneakers', 'Kids Shoes'],
+    label: 'Footwear & Bags',
+    desc: 'Men, Women & Kids footwear, totes & backpacks',
+    cats: ['Footwear (M/W/K)', 'Bags (M/W/K)', 'Shoe Care'],
     tintBg: '#F1E6D6',
     tintFg: '#6B4A1E',
   },
@@ -214,7 +214,7 @@ const JOIN_STEPS = [
 export function AuthView({
   onSuccess,
   initialMode = 'welcome',
-  initialEmail = 'owner@zyropos.app',
+  initialEmail = '03465629140',
   onModeChange,
 }: {
   onSuccess: (user: StaffUser) => void;
@@ -437,8 +437,8 @@ export function AuthView({
         setError('Please enter your full name.');
         return;
       }
-      if (!regEmail.trim() || !regEmail.includes('@')) {
-        setError('Please enter a valid email address.');
+      if (regEmail.trim() && !regEmail.includes('@')) {
+        setError('Please enter a valid email address or leave it blank to use your mobile number.');
         return;
       }
       if (regPassword.length < 6) {
@@ -1079,15 +1079,16 @@ export function AuthView({
                   {regDemoOtp && (
                     <div className="rounded-[12px] bg-[#EAF2FD] border border-[#B5D3F5] px-4 py-2.5 text-[13px] text-[#24398A] flex items-center justify-between gap-2">
                       <span>
-                        Verification code: <strong className="font-mono text-[15px]">{regDemoOtp}</strong>
+                        Instant code (no SMS provider needed):{' '}
+                        <strong className="font-mono text-[15px]">{regDemoOtp}</strong>
                       </span>
                       <button
                         type="button"
                         onClick={handleResendRegOtp}
                         disabled={loading}
-                        className="font-bold underline"
+                        className="font-bold underline shrink-0"
                       >
-                        Resend code
+                        Resend
                       </button>
                     </div>
                   )}
@@ -1111,7 +1112,7 @@ export function AuthView({
                   </div>
                   <div>
                     <label className="block text-[14px] font-semibold text-[#162660] mb-1.5">
-                      Email address
+                      Email address <span className="font-normal text-[#5B6585]">(optional — mobile login works directly)</span>
                     </label>
                     <input
                       type="email"
@@ -2004,10 +2005,13 @@ export function AuthView({
                         required
                         value={identifier}
                         onChange={(e) => setIdentifier(e.target.value)}
-                        placeholder="owner@zyropos.app or +92 300..."
+                        placeholder="03465629140 or owner@zyropos.app"
                         className="flex-1 h-full text-[15px] bg-transparent focus:outline-none"
                       />
                     </div>
+                    <p className="text-[12px] text-[#5B6585] mt-1.5">
+                      Sign in directly with mobile number + password — no SMS OTP or Twilio needed.
+                    </p>
                   </div>
 
                   <div>
@@ -2064,7 +2068,7 @@ export function AuthView({
                   </p>
                   <div className="grid grid-cols-3 gap-2">
                     {[
-                      { label: 'Owner', sub: 'Bilal Ahmed', email: 'owner@zyropos.app' },
+                      { label: 'Owner', sub: '03465629140', email: '03465629140' },
                       { label: 'Cashier', sub: 'Sana Tariq', email: 'cashier@zyropos.app' },
                       { label: 'Stock', sub: 'Usman Raza', email: 'stock@zyropos.app' },
                     ].map((r) => (

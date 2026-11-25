@@ -2,6 +2,7 @@ import 'dotenv/config';
 import crypto from 'crypto';
 import express, { type Express, type NextFunction, type Request, type Response } from 'express';
 import { zyroStore } from './store.ts';
+import { computeOfferLineDiscount, formatOfferBadge, isOfferActive } from '../lib/offers.ts';
 import type {
   CartItem,
   CashMovement,
@@ -10,9 +11,11 @@ import type {
   Customer,
   Expense,
   HeldBill,
+  OfferType,
   PaymentMethod,
   PaymentSplitEntry,
   Product,
+  ProductOffer,
   PurchaseOrder,
   ReturnRecord,
   Sale,
@@ -49,6 +52,58 @@ function asFiniteNumber(val: unknown, min = 0, max = 1_000_000_000): number | nu
   const num = Number(val);
   if (!Number.isFinite(num) || num < min || num > max) return null;
   return num;
+}
+
+function parseSubcategories(raw: unknown): string[] | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  const list = Array.isArray(raw)
+    ? raw
+    : typeof raw === 'string'
+      ? raw.split(',')
+      : [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of list) {
+    if (typeof item !== 'string') continue;
+    const trimmed = item.trim().slice(0, 40);
+    if (!trimmed) continue;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(trimmed);
+    if (out.length >= 20) break;
+  }
+  return out;
+}
+
+const ALLOWED_OFFER_TYPES: OfferType[] = ['percent', 'fixed', 'bogo'];
+
+function parseOfferInput(raw: unknown): ProductOffer | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const obj = raw as Record<string, unknown>;
+  const active = Boolean(obj.active);
+  const type: OfferType = ALLOWED_OFFER_TYPES.includes(obj.type as OfferType)
+    ? (obj.type as OfferType)
+    : 'percent';
+  const maxVal = type === 'percent' ? 95 : 10_000_000;
+  const rawVal = asFiniteNumber(obj.value ?? 0, 0, maxVal);
+  const value = rawVal !== null ? Math.round(rawVal) : 0;
+  if (!active && value === 0 && !obj.label) return undefined;
+  const label = typeof obj.label === 'string' && obj.label.trim() ? obj.label.trim().slice(0, 40) : undefined;
+  const minQtyRaw = obj.minQty !== undefined ? asFiniteNumber(obj.minQty, 1, 1000) : null;
+  const minQty = minQtyRaw !== null ? Math.round(minQtyRaw) : undefined;
+  const endsAt =
+    typeof obj.endsAt === 'string' && obj.endsAt.trim() && !Number.isNaN(new Date(obj.endsAt).getTime())
+      ? obj.endsAt.trim().slice(0, 40)
+      : undefined;
+  return {
+    active,
+    type,
+    value: type === 'bogo' ? (value > 0 ? Math.min(value, 100) : 100) : value,
+    ...(label ? { label } : {}),
+    ...(minQty ? { minQty } : {}),
+    ...(endsAt ? { endsAt } : {}),
+  };
 }
 
 const ALLOWED_ROLES: UserRole[] = ['owner', 'manager', 'cashier', 'stock'];
@@ -156,7 +211,10 @@ export function createApiApp(): Express {
 
   // ==================== AUTH ROUTES ====================
   app.post('/api/auth/login', async (req: Request, res: Response) => {
-    const identifier = asNonEmptyString(req.body?.identifier ?? req.body?.email, 160);
+    const identifier = asNonEmptyString(
+      req.body?.identifier ?? req.body?.phone ?? req.body?.email,
+      160
+    );
     const password = typeof req.body?.password === 'string' ? req.body.password : '';
     if (!identifier || !password) {
       return res.status(400).json({ error: 'Email or mobile number and password are required.' });
@@ -217,7 +275,7 @@ export function createApiApp(): Express {
 
   app.post('/api/auth/register', async (req: Request, res: Response) => {
     const name = asNonEmptyString(req.body?.name, 100);
-    const email = asNonEmptyString(req.body?.email, 160);
+    const rawEmail = asNonEmptyString(req.body?.email, 160);
     const password = typeof req.body?.password === 'string' ? req.body.password : '';
     const shopName = typeof req.body?.shopName === 'string' ? req.body.shopName.trim().slice(0, 120) : '';
     const phone = typeof req.body?.phone === 'string' ? req.body.phone.trim().slice(0, 40) : '';
@@ -238,8 +296,16 @@ export function createApiApp(): Express {
     ];
     const shopKind = allowedKinds.includes(req.body?.shopKind) ? (req.body.shopKind as ShopKind) : undefined;
 
-    if (!name || !email || !email.includes('@')) {
-      return res.status(400).json({ error: 'Please provide a valid full name and email address.' });
+    const phoneDigits = phone.replace(/\D/g, '');
+    const email =
+      rawEmail && rawEmail.includes('@')
+        ? rawEmail
+        : phoneDigits.length >= 9
+          ? `${phoneDigits}@zyropos.app`
+          : null;
+
+    if (!name || !email) {
+      return res.status(400).json({ error: 'Please provide a valid full name and email address or mobile number.' });
     }
     if (password.length < 6) {
       return res.status(400).json({ error: 'Password must be at least 6 characters long.' });
@@ -349,7 +415,14 @@ export function createApiApp(): Express {
         : '#162660';
     const description =
       typeof req.body?.description === 'string' ? req.body.description.trim().slice(0, 200) : '';
-    const cat: Category = { id: genId('cat'), name, color, description };
+    const subcategories = parseSubcategories(req.body?.subcategories);
+    const cat: Category = {
+      id: genId('cat'),
+      name,
+      color,
+      description,
+      ...(subcategories && subcategories.length > 0 ? { subcategories } : {}),
+    };
     zyroStore.getWorkspace().categories.push(cat);
     await zyroStore.persist();
     return res.status(201).json(cat);
@@ -366,6 +439,10 @@ export function createApiApp(): Express {
     }
     if (typeof req.body?.description === 'string') {
       cat.description = req.body.description.trim().slice(0, 200);
+    }
+    if (req.body?.subcategories !== undefined) {
+      const parsed = parseSubcategories(req.body.subcategories);
+      cat.subcategories = parsed && parsed.length > 0 ? parsed : undefined;
     }
     await zyroStore.persist();
     return res.json(cat);
@@ -384,19 +461,77 @@ export function createApiApp(): Express {
     return res.json(zyroStore.getWorkspace().categories);
   });
 
-  // ==================== PRODUCTS ====================
+  // ==================== PRODUCTS & OFFERS ====================
   app.get('/api/products', requireAuth, (req: AuthRequest, res: Response) => {
     const q = typeof req.query?.q === 'string' ? req.query.q.trim().toLowerCase() : '';
-    const prods = zyroStore.getWorkspace().products;
-    if (!q) return res.json(prods);
-    return res.json(
-      prods.filter(
+    const categoryId = typeof req.query?.categoryId === 'string' ? req.query.categoryId.trim() : '';
+    const subcategory = typeof req.query?.subcategory === 'string' ? req.query.subcategory.trim().toLowerCase() : '';
+    const offerOnly = req.query?.offerOnly === 'true' || req.query?.offerOnly === '1';
+    const status = typeof req.query?.status === 'string' ? req.query.status.trim().toLowerCase() : '';
+
+    let prods = zyroStore.getWorkspace().products;
+    if (categoryId && categoryId !== 'all') {
+      prods = prods.filter((p) => p.categoryId === categoryId);
+    }
+    if (subcategory && subcategory !== 'all') {
+      prods = prods.filter((p) => (p.subcategory || '').toLowerCase() === subcategory);
+    }
+    if (offerOnly) {
+      prods = prods.filter((p) => isOfferActive(p.offer));
+    }
+    if (status === 'out') {
+      prods = prods.filter((p) => p.stockQty <= 0);
+    } else if (status === 'low') {
+      prods = prods.filter((p) => p.stockQty > 0 && p.stockQty <= p.minStock);
+    } else if (status === 'in') {
+      prods = prods.filter((p) => p.stockQty > p.minStock);
+    }
+    if (q) {
+      prods = prods.filter(
         (p) =>
           p.name.toLowerCase().includes(q) ||
           p.sku.toLowerCase().includes(q) ||
-          p.barcode.toLowerCase().includes(q)
-      )
-    );
+          p.barcode.toLowerCase().includes(q) ||
+          (p.subcategory || '').toLowerCase().includes(q) ||
+          (p.variant || '').toLowerCase().includes(q)
+      );
+    }
+    return res.json(prods);
+  });
+
+  app.get('/api/offers', requireAuth, (_req: AuthRequest, res: Response) => {
+    const prods = zyroStore.getWorkspace().products.filter((p) => isOfferActive(p.offer));
+    return res.json(prods);
+  });
+
+  app.get('/api/stock/summary', requireAuth, (_req: AuthRequest, res: Response) => {
+    const prods = zyroStore.getWorkspace().products;
+    let totalUnits = 0;
+    let lowCount = 0;
+    let outCount = 0;
+    let inStockCount = 0;
+    let offerCount = 0;
+    let costValue = 0;
+    let retailValue = 0;
+    for (const p of prods) {
+      totalUnits += p.stockQty;
+      if (p.stockQty <= 0) outCount++;
+      else if (p.stockQty <= p.minStock) lowCount++;
+      else inStockCount++;
+      if (isOfferActive(p.offer)) offerCount++;
+      costValue += p.costPrice * p.stockQty;
+      retailValue += p.salePrice * p.stockQty;
+    }
+    return res.json({
+      totalItems: prods.length,
+      totalUnits,
+      lowCount,
+      outCount,
+      inStockCount,
+      offerCount,
+      costValue,
+      retailValue,
+    });
   });
 
   app.get('/api/products/lookup', requireAuth, (req: AuthRequest, res: Response) => {
@@ -411,6 +546,14 @@ export function createApiApp(): Express {
           p.id.toLowerCase() === code
       );
     return res.json({ product: prod || null });
+  });
+
+  app.get('/api/products/:id', requireAuth, (req: AuthRequest, res: Response) => {
+    const ws = zyroStore.getWorkspace();
+    const prod = ws.products.find((p) => p.id === req.params.id);
+    if (!prod) return res.status(404).json({ error: 'Product not found.' });
+    const adjustments = ws.stockAdjustments.filter((a) => a.productId === prod.id).slice(0, 25);
+    return res.json({ product: prod, adjustments });
   });
 
   app.post('/api/products', requireAuth, async (req: AuthRequest, res: Response) => {
@@ -430,6 +573,11 @@ export function createApiApp(): Express {
       typeof req.body?.categoryId === 'string' && ws.categories.some((c) => c.id === req.body.categoryId)
         ? req.body.categoryId
         : ws.categories[0]?.id || 'cat_general';
+    const subcategory =
+      typeof req.body?.subcategory === 'string' && req.body.subcategory.trim()
+        ? req.body.subcategory.trim().slice(0, 40)
+        : undefined;
+    const offer = parseOfferInput(req.body?.offer);
 
     const product: Product = {
       id: genId('prd'),
@@ -440,6 +588,7 @@ export function createApiApp(): Express {
           ? req.body.barcode.trim().slice(0, 64)
           : `8964${Math.floor(1000000 + Math.random() * 8999999)}`,
       categoryId,
+      ...(subcategory ? { subcategory } : {}),
       variant: typeof req.body?.variant === 'string' ? req.body.variant.trim().slice(0, 80) : 'Standard',
       unit: typeof req.body?.unit === 'string' && req.body.unit.trim() ? req.body.unit.trim().slice(0, 20) : 'pcs',
       costPrice,
@@ -450,6 +599,7 @@ export function createApiApp(): Express {
         typeof req.body?.swatch === 'string' && /^#[0-9A-Fa-f]{6}$/.test(req.body.swatch)
           ? req.body.swatch
           : '#162660',
+      ...(offer ? { offer } : {}),
       active: req.body?.active !== false,
       updatedAt: new Date().toISOString(),
     };
@@ -470,6 +620,12 @@ export function createApiApp(): Express {
     if (sku) prod.sku = sku.toUpperCase();
     if (typeof req.body?.barcode === 'string') prod.barcode = req.body.barcode.trim().slice(0, 64);
     if (typeof req.body?.categoryId === 'string') prod.categoryId = req.body.categoryId;
+    if (req.body?.subcategory !== undefined) {
+      prod.subcategory =
+        typeof req.body.subcategory === 'string' && req.body.subcategory.trim()
+          ? req.body.subcategory.trim().slice(0, 40)
+          : undefined;
+    }
     if (typeof req.body?.variant === 'string') prod.variant = req.body.variant.trim().slice(0, 80);
     if (typeof req.body?.unit === 'string' && req.body.unit.trim()) prod.unit = req.body.unit.trim().slice(0, 20);
     const salePrice = asFiniteNumber(req.body?.salePrice, 0);
@@ -483,9 +639,23 @@ export function createApiApp(): Express {
     if (typeof req.body?.swatch === 'string' && /^#[0-9A-Fa-f]{6}$/.test(req.body.swatch)) {
       prod.swatch = req.body.swatch;
     }
+    if (req.body?.offer !== undefined) {
+      prod.offer = req.body.offer === null ? undefined : parseOfferInput(req.body.offer);
+    }
     if (typeof req.body?.active === 'boolean') prod.active = req.body.active;
     prod.updatedAt = new Date().toISOString();
 
+    await zyroStore.persist();
+    return res.json(prod);
+  });
+
+  app.patch('/api/products/:id/offer', requireAuth, async (req: AuthRequest, res: Response) => {
+    const ws = zyroStore.getWorkspace();
+    const prod = ws.products.find((p) => p.id === req.params.id);
+    if (!prod) return res.status(404).json({ error: 'Product not found.' });
+    const rawOffer = req.body?.offer !== undefined ? req.body.offer : req.body;
+    prod.offer = rawOffer === null ? undefined : parseOfferInput(rawOffer);
+    prod.updatedAt = new Date().toISOString();
     await zyroStore.persist();
     return res.json(prod);
   });
@@ -623,8 +793,33 @@ export function createApiApp(): Express {
   });
 
   // ==================== SALES & CHECKOUT ====================
-  app.get('/api/sales', requireAuth, (_req: AuthRequest, res: Response) => {
-    return res.json(zyroStore.getWorkspace().sales);
+  app.get('/api/sales', requireAuth, (req: AuthRequest, res: Response) => {
+    const q = typeof req.query?.q === 'string' ? req.query.q.trim().toLowerCase() : '';
+    const paymentMethod = typeof req.query?.paymentMethod === 'string' ? req.query.paymentMethod.trim().toLowerCase() : '';
+    const status = typeof req.query?.status === 'string' ? req.query.status.trim().toLowerCase() : '';
+    let sales = zyroStore.getWorkspace().sales;
+    if (paymentMethod && paymentMethod !== 'all') {
+      sales = sales.filter((s) => s.paymentMethod === paymentMethod);
+    }
+    if (status && status !== 'all') {
+      sales = sales.filter((s) => s.status === status);
+    }
+    if (q) {
+      sales = sales.filter(
+        (s) =>
+          s.billNo.toLowerCase().includes(q) ||
+          s.customerName.toLowerCase().includes(q) ||
+          s.cashierName.toLowerCase().includes(q) ||
+          s.items.some((i) => i.name.toLowerCase().includes(q) || i.sku.toLowerCase().includes(q))
+      );
+    }
+    return res.json(sales);
+  });
+
+  app.get('/api/sales/:id', requireAuth, (req: AuthRequest, res: Response) => {
+    const sale = zyroStore.getWorkspace().sales.find((s) => s.id === req.params.id);
+    if (!sale) return res.status(404).json({ error: 'Sale invoice not found.' });
+    return res.json(sale);
   });
 
   app.post('/api/sales', requireAuth, async (req: AuthRequest, res: Response) => {
@@ -648,8 +843,20 @@ export function createApiApp(): Express {
       if (qty === null || unitPrice === null || lineDiscount === null) {
         return res.status(400).json({ error: 'Invalid cart item quantity or price.' });
       }
+      const roundedQty = Math.round(qty);
       const prod = ws.products.find((p) => p.id === raw.productId);
-      const lineTotal = Math.max(0, Math.round(unitPrice * qty - lineDiscount));
+      const offerDiscount = prod ? computeOfferLineDiscount(unitPrice, roundedQty, prod.offer) : 0;
+      const effectiveDiscount = Math.min(
+        Math.round(unitPrice * roundedQty),
+        Math.max(Math.round(lineDiscount), offerDiscount)
+      );
+      const offerLabel =
+        prod && offerDiscount > 0
+          ? formatOfferBadge(prod.offer, ws.settings.currency || 'Rs') || undefined
+          : typeof raw.offerLabel === 'string' && raw.offerLabel.trim()
+            ? raw.offerLabel.trim().slice(0, 40)
+            : undefined;
+      const lineTotal = Math.max(0, Math.round(unitPrice * roundedQty - effectiveDiscount));
       subtotal += lineTotal;
       saleItems.push({
         productId: raw.productId,
@@ -658,9 +865,10 @@ export function createApiApp(): Express {
         variant: prod?.variant || String(raw.variant || ''),
         unitPrice,
         costPrice: prod?.costPrice ?? Number(raw.costPrice || 0),
-        qty: Math.round(qty),
+        qty: roundedQty,
         returnedQty: 0,
-        discount: lineDiscount,
+        discount: effectiveDiscount,
+        ...(offerLabel ? { offerLabel } : {}),
         lineTotal,
       });
     }
@@ -879,6 +1087,10 @@ export function createApiApp(): Express {
   });
 
   // ==================== HELD BILLS ====================
+  app.get('/api/held-bills', requireAuth, (_req: AuthRequest, res: Response) => {
+    return res.json(zyroStore.getWorkspace().heldBills);
+  });
+
   app.post('/api/held-bills', requireAuth, async (req: AuthRequest, res: Response) => {
     const items = req.body?.items;
     if (!Array.isArray(items) || items.length === 0) {

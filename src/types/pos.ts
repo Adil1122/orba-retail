@@ -79,6 +79,18 @@ export interface Category {
   name: string;
   color: string;
   description?: string;
+  subcategories?: string[];
+}
+
+export type OfferType = 'percent' | 'fixed' | 'bogo';
+
+export interface ProductOffer {
+  active: boolean;
+  type: OfferType;
+  value: number;
+  label?: string;
+  minQty?: number;
+  endsAt?: string;
 }
 
 export interface Product {
@@ -87,6 +99,7 @@ export interface Product {
   sku: string;
   barcode: string;
   categoryId: string;
+  subcategory?: string;
   variant: string;
   unit: string;
   costPrice: number;
@@ -95,6 +108,7 @@ export interface Product {
   minStock: number;
   swatch: string;
   artKey?: string;
+  offer?: ProductOffer;
   active: boolean;
   updatedAt: string;
 }
@@ -107,7 +121,8 @@ export interface CartItem {
   unitPrice: number;
   costPrice: number;
   qty: number;
-  discount: number; // per-line fixed discount
+  discount: number; // per-line total discount (includes active product offer)
+  offerLabel?: string;
 }
 
 export interface SaleItem {
@@ -120,6 +135,7 @@ export interface SaleItem {
   qty: number;
   returnedQty: number;
   discount: number;
+  offerLabel?: string;
   lineTotal: number;
 }
 

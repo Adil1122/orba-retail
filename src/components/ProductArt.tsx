@@ -13,7 +13,8 @@ export type ArtKey =
   | 'khussa'
   | 'belt'
   | 'socks'
-  | 'fabric';
+  | 'fabric'
+  | 'bag';
 
 const ART: Record<ArtKey, { b: string; s: string; l: string }> = {
   tee: {
@@ -76,6 +77,11 @@ const ART: Record<ArtKey, { b: string; s: string; l: string }> = {
     s: 'M90 34A10 22 0 0 1 90 78A10 22 0 0 1 90 34Z',
     l: 'M38 46H82M38 56H82M38 66H82M90 50A4 7 0 0 1 90 62',
   },
+  bag: {
+    b: 'M26 40H94L98 96Q98 104 90 104H30Q22 104 22 96Z',
+    s: 'M26 40H94L95 54H25ZM23 90H97L98 96Q98 104 90 104H30Q22 104 22 96Z',
+    l: 'M42 40V28C42 18 78 18 78 28V40M26 56H94M52 56V66H68V56',
+  },
 };
 
 export const TINT_PALETTE: { bg: string; fg: string }[] = [
@@ -91,6 +97,7 @@ export function getCategoryTint(categoryIdOrName?: string): { bg: string; fg: st
   if (s.includes('pret') || s.includes('men') || s.includes('ready')) return TINT_PALETTE[0];
   if (s.includes('unstitched') || s.includes('women') || s.includes('fabric')) return TINT_PALETTE[4];
   if (s.includes('foot') || s.includes('shoe')) return TINT_PALETTE[2];
+  if (s.includes('bag') || s.includes('tote') || s.includes('pack')) return TINT_PALETTE[1];
   if (s.includes('acc') || s.includes('perfume') || s.includes('care')) return TINT_PALETTE[3];
   if (s.includes('kid')) return TINT_PALETTE[1];
   let hash = 0;
@@ -101,6 +108,7 @@ export function getCategoryTint(categoryIdOrName?: string): { bg: string; fg: st
 export function inferArtKey(product: Pick<Product, 'name' | 'artKey' | 'categoryId'>): ArtKey {
   if (product.artKey && product.artKey in ART) return product.artKey as ArtKey;
   const n = product.name.toLowerCase();
+  if (n.includes('bag') || n.includes('tote') || n.includes('backpack') || n.includes('clutch') || n.includes('satchel')) return 'bag';
   if (n.includes('kurta') || n.includes('shalwar')) return 'kurta';
   if (n.includes('lawn') || n.includes('3-piece') || n.includes('embroidered')) return 'lawn';
   if (n.includes('suit') || n.includes('wash')) return 'suit';

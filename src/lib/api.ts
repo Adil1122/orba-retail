@@ -1,4 +1,12 @@
-import type { Product, Sale, StaffUser, WorkspacePayload } from '../types/pos.ts';
+import type {
+  HeldBill,
+  Product,
+  ProductOffer,
+  Sale,
+  StaffUser,
+  StockAdjustment,
+  WorkspacePayload,
+} from '../types/pos.ts';
 
 const TOKEN_KEY = 'zyro_pos_session_token';
 
@@ -140,15 +148,45 @@ export const api = {
 
   getWorkspace: () => request<WorkspacePayload>('/api/workspace'),
 
-  getProducts: (q?: string) =>
-    request<Product[]>(`/api/products${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+  getProducts: (params?: {
+    q?: string;
+    categoryId?: string;
+    subcategory?: string;
+    offerOnly?: boolean;
+    status?: string;
+  }) => {
+    const sp = new URLSearchParams();
+    if (params?.q) sp.set('q', params.q);
+    if (params?.categoryId) sp.set('categoryId', params.categoryId);
+    if (params?.subcategory) sp.set('subcategory', params.subcategory);
+    if (params?.offerOnly) sp.set('offerOnly', 'true');
+    if (params?.status) sp.set('status', params.status);
+    const qs = sp.toString();
+    return request<Product[]>(`/api/products${qs ? `?${qs}` : ''}`);
+  },
+  getProduct: (id: string) =>
+    request<{ product: Product; adjustments: StockAdjustment[] }>(`/api/products/${id}`),
+  getOffers: () => request<Product[]>('/api/offers'),
+  getStockSummary: () =>
+    request<{
+      totalItems: number;
+      totalUnits: number;
+      lowCount: number;
+      outCount: number;
+      inStockCount: number;
+      offerCount: number;
+      costValue: number;
+      retailValue: number;
+    }>('/api/stock/summary'),
   lookupProduct: (code: string) =>
     request<{ product: Product | null }>(`/api/products/lookup?code=${encodeURIComponent(code)}`),
 
-  createCategory: (body: { name: string; color: string; description?: string }) =>
+  createCategory: (body: { name: string; color: string; description?: string; subcategories?: string[] }) =>
     request('/api/categories', { method: 'POST', body: JSON.stringify(body) }),
-  updateCategory: (id: string, body: { name?: string; color?: string; description?: string }) =>
-    request(`/api/categories/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  updateCategory: (
+    id: string,
+    body: { name?: string; color?: string; description?: string; subcategories?: string[] }
+  ) => request(`/api/categories/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteCategory: (id: string) => request(`/api/categories/${id}`, { method: 'DELETE' }),
 
   createProduct: (body: Record<string, unknown>) =>
@@ -159,6 +197,11 @@ export const api = {
     request<Product>(`/api/products/${id}/price`, {
       method: 'PATCH',
       body: JSON.stringify({ salePrice, costPrice }),
+    }),
+  updateProductOffer: (id: string, offer: ProductOffer | null) =>
+    request<Product>(`/api/products/${id}/offer`, {
+      method: 'PATCH',
+      body: JSON.stringify({ offer }),
     }),
   deleteProduct: (id: string) => request(`/api/products/${id}`, { method: 'DELETE' }),
   adjustProductStock: (id: string, delta: number, reason: string) =>
@@ -178,11 +221,13 @@ export const api = {
     }),
 
   getSales: () => request<Sale[]>('/api/sales'),
+  getSale: (id: string) => request<Sale>(`/api/sales/${id}`),
   createSale: (body: Record<string, unknown>) =>
     request<Sale>('/api/sales', { method: 'POST', body: JSON.stringify(body) }),
   createReturn: (saleId: string, body: Record<string, unknown>) =>
     request(`/api/sales/${saleId}/return`, { method: 'POST', body: JSON.stringify(body) }),
 
+  getHeldBills: () => request<HeldBill[]>('/api/held-bills'),
   holdBill: (body: Record<string, unknown>) =>
     request('/api/held-bills', { method: 'POST', body: JSON.stringify(body) }),
   deleteHeldBill: (id: string) => request(`/api/held-bills/${id}`, { method: 'DELETE' }),

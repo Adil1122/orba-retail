@@ -30,6 +30,8 @@ CREATE TABLE IF NOT EXISTS public.categories (
   business_id TEXT NOT NULL REFERENCES public.businesses(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   color TEXT NOT NULL DEFAULT '#162660',
+  description TEXT,
+  subcategories JSONB NOT NULL DEFAULT '[]'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -37,6 +39,7 @@ CREATE TABLE IF NOT EXISTS public.products (
   id TEXT PRIMARY KEY,
   business_id TEXT NOT NULL REFERENCES public.businesses(id) ON DELETE CASCADE,
   category_id TEXT REFERENCES public.categories(id) ON DELETE SET NULL,
+  subcategory TEXT,
   name TEXT NOT NULL,
   sku TEXT NOT NULL,
   barcode TEXT,
@@ -47,6 +50,7 @@ CREATE TABLE IF NOT EXISTS public.products (
   stock_qty INTEGER NOT NULL DEFAULT 0,
   min_stock INTEGER NOT NULL DEFAULT 5,
   swatch TEXT DEFAULT '#162660',
+  offer JSONB,
   active BOOLEAN NOT NULL DEFAULT TRUE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

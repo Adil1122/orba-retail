@@ -14,6 +14,7 @@ import {
   ShoppingBag,
   Smartphone,
   Split,
+  Tag,
   Trash2,
   UserPlus,
   Users,
@@ -32,6 +33,12 @@ import type {
   WorkspacePayload,
 } from '../types/pos.ts';
 import { formatDateTime, formatMoney, paymentMethodLabel } from '../lib/format.ts';
+import {
+  computeOfferLineDiscount,
+  formatOfferBadge,
+  getEffectiveUnitPrice,
+  isOfferActive,
+} from '../lib/offers.ts';
 import { Modal } from './BrandMark.tsx';
 import { ProductArtSvg, ProductArtThumb, getCategoryTint } from './ProductArt.tsx';
 
@@ -53,6 +60,7 @@ export function PosRegisterView({
 
   const [search, setSearch] = useState('');
   const [selectedCat, setSelectedCat] = useState<string>('all');
+  const [selectedSubcat, setSelectedSubcat] = useState<string>('all');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [discountType, setDiscountType] = useState<'fixed' | 'percent'>('fixed');
@@ -89,9 +97,24 @@ export function PosRegisterView({
   const [returnReason, setReturnReason] = useState('Customer size exchange / return');
   const [processingReturn, setProcessingReturn] = useState(false);
 
+  const catMap = useMemo(
+    () => new Map(workspace.categories.map((c) => [c.id, c])),
+    [workspace.categories]
+  );
+
   const catNameMap = useMemo(
     () => new Map(workspace.categories.map((c) => [c.id, c.name])),
     [workspace.categories]
+  );
+
+  const activeCategoryObj = useMemo(
+    () => (selectedCat !== 'all' && selectedCat !== 'offers' ? catMap.get(selectedCat) || null : null),
+    [catMap, selectedCat]
+  );
+
+  const offerProductCount = useMemo(
+    () => workspace.products.filter((p) => p.active && isOfferActive(p.offer)).length,
+    [workspace.products]
   );
 
   const activeShift = useMemo(
@@ -105,19 +128,35 @@ export function PosRegisterView({
     const q = search.trim().toLowerCase();
     return workspace.products.filter((p) => {
       if (!p.active) return false;
-      if (selectedCat !== 'all' && p.categoryId !== selectedCat) return false;
+      if (selectedCat === 'offers') {
+        if (!isOfferActive(p.offer)) return false;
+      } else if (selectedCat !== 'all' && p.categoryId !== selectedCat) {
+        return false;
+      }
+      if (
+        selectedSubcat !== 'all' &&
+        (p.subcategory || '').toLowerCase() !== selectedSubcat.toLowerCase()
+      ) {
+        return false;
+      }
       if (!q) return true;
       return (
         p.name.toLowerCase().includes(q) ||
         p.sku.toLowerCase().includes(q) ||
         p.barcode.toLowerCase().includes(q) ||
-        p.variant.toLowerCase().includes(q)
+        p.variant.toLowerCase().includes(q) ||
+        (p.subcategory || '').toLowerCase().includes(q)
       );
     });
-  }, [workspace.products, selectedCat, search]);
+  }, [workspace.products, selectedCat, selectedSubcat, search]);
 
   const subtotal = useMemo(
     () => cart.reduce((acc, item) => acc + Math.max(0, item.unitPrice * item.qty - item.discount), 0),
+    [cart]
+  );
+
+  const cartOfferSavings = useMemo(
+    () => cart.reduce((acc, item) => acc + (item.discount || 0), 0),
     [cart]
   );
 
@@ -151,19 +190,27 @@ export function PosRegisterView({
           notify('err', `Only ${product.stockQty} units of ${product.name} in stock.`);
           return prev;
         }
-        return prev.map((i) => (i.productId === product.id ? { ...i, qty: i.qty + 1 } : i));
+        const nextQty = existing.qty + 1;
+        const discount = computeOfferLineDiscount(product.salePrice, nextQty, product.offer);
+        const offerLabel = discount > 0 ? formatOfferBadge(product.offer, cur) || undefined : undefined;
+        return prev.map((i) =>
+          i.productId === product.id ? { ...i, qty: nextQty, discount, offerLabel } : i
+        );
       }
+      const discount = computeOfferLineDiscount(product.salePrice, 1, product.offer);
+      const offerLabel = discount > 0 ? formatOfferBadge(product.offer, cur) || undefined : undefined;
       return [
         ...prev,
         {
           productId: product.id,
           name: product.name,
           sku: product.sku,
-          variant: product.variant,
+          variant: product.subcategory ? `${product.subcategory} · ${product.variant}` : product.variant,
           unitPrice: product.salePrice,
           costPrice: product.costPrice,
           qty: 1,
-          discount: 0,
+          discount,
+          ...(offerLabel ? { offerLabel } : {}),
         },
       ];
     });
@@ -210,7 +257,12 @@ export function PosRegisterView({
             notify('err', `Max ${prod.stockQty} available in stock.`);
             return item;
           }
-          return { ...item, qty: nextQty };
+          const discount = prod
+            ? computeOfferLineDiscount(item.unitPrice, nextQty, prod.offer)
+            : item.discount;
+          const offerLabel =
+            prod && discount > 0 ? formatOfferBadge(prod.offer, cur) || undefined : undefined;
+          return { ...item, qty: nextQty, discount, offerLabel };
         })
         .filter(Boolean) as CartItem[]
     );
@@ -535,9 +587,14 @@ export function PosRegisterView({
                 )}
                 <div className="min-w-0 flex-1">
                   <p className="text-[14px] font-bold text-[#162660] truncate">{item.name}</p>
-                  <p className="text-[12px] text-[#5B6585] tabular-num">
+                  <p className="text-[12px] text-[#5B6585] tabular-num truncate">
                     {formatMoney(item.unitPrice, cur)} · {item.variant || item.sku}
                   </p>
+                  {item.discount > 0 && (
+                    <p className="text-[11px] font-bold text-[#14532D] mt-0.5 tabular-num">
+                      {item.offerLabel || 'Offer'} · -{formatMoney(item.discount, cur)}
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-1 bg-[#F6F0E7] rounded-[10px] p-0.5 shrink-0">
@@ -578,6 +635,16 @@ export function PosRegisterView({
             <span>Subtotal</span>
             <span className="num font-semibold">{formatMoney(subtotal, cur)}</span>
           </div>
+
+          {cartOfferSavings > 0 && (
+            <div className="flex items-center justify-between text-[12px] text-[#14532D] font-semibold">
+              <span className="inline-flex items-center gap-1">
+                <Tag className="w-3 h-3" />
+                Product offers applied
+              </span>
+              <span className="num">-{formatMoney(cartOfferSavings, cur)}</span>
+            </div>
+          )}
 
           <div className="flex items-center justify-between">
             <button
@@ -677,40 +744,95 @@ export function PosRegisterView({
             )}
           </div>
 
-          {/* 44px Rounded-Full Category Pills */}
-          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-0.5">
-            <button
-              type="button"
-              onClick={() => setSelectedCat('all')}
-              className={`h-[42px] px-4 rounded-full text-[14px] font-bold whitespace-nowrap transition-colors shrink-0 ${
-                selectedCat === 'all'
-                  ? 'bg-[#162660] text-white'
-                  : 'bg-white border border-[#E9E1D5] text-[#454F70] hover:bg-[#F8F2E9]'
-              }`}
-            >
-              All items ({workspace.products.filter((p) => p.active).length})
-            </button>
-            {workspace.categories.map((cat) => {
-              const active = selectedCat === cat.id;
-              return (
+          {/* 44px Rounded-Full Category Pills + Offers + Sub-category Row */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-0.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedCat('all');
+                  setSelectedSubcat('all');
+                }}
+                className={`h-[42px] px-4 rounded-full text-[14px] font-bold whitespace-nowrap transition-colors shrink-0 ${
+                  selectedCat === 'all'
+                    ? 'bg-[#162660] text-white'
+                    : 'bg-white border border-[#E9E1D5] text-[#454F70] hover:bg-[#F8F2E9]'
+                }`}
+              >
+                All items ({workspace.products.filter((p) => p.active).length})
+              </button>
+              {offerProductCount > 0 && (
                 <button
-                  key={cat.id}
                   type="button"
-                  onClick={() => setSelectedCat(cat.id)}
-                  className={`h-[42px] px-4 rounded-full text-[14px] font-bold whitespace-nowrap transition-colors shrink-0 ${
-                    active
-                      ? 'bg-[#162660] text-white'
+                  onClick={() => {
+                    setSelectedCat('offers');
+                    setSelectedSubcat('all');
+                  }}
+                  className={`h-[42px] px-4 rounded-full text-[14px] font-bold whitespace-nowrap transition-colors shrink-0 inline-flex items-center gap-1.5 ${
+                    selectedCat === 'offers'
+                      ? 'bg-[#162660] text-[#D0E6FD]'
+                      : 'bg-[#EEF5FE] border border-[#B5D3F5] text-[#162660] hover:bg-[#D0E6FD]'
+                  }`}
+                >
+                  <Tag className="w-3.5 h-3.5" />
+                  Offers ({offerProductCount})
+                </button>
+              )}
+              {workspace.categories.map((cat) => {
+                const active = selectedCat === cat.id;
+                return (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedCat(cat.id);
+                      setSelectedSubcat('all');
+                    }}
+                    className={`h-[42px] px-4 rounded-full text-[14px] font-bold whitespace-nowrap transition-colors shrink-0 ${
+                      active
+                        ? 'bg-[#162660] text-white'
+                        : 'bg-white border border-[#E9E1D5] text-[#454F70] hover:bg-[#F8F2E9]'
+                    }`}
+                  >
+                    {cat.name}
+                  </button>
+                );
+              })}
+            </div>
+
+            {activeCategoryObj?.subcategories && activeCategoryObj.subcategories.length > 0 && (
+              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+                <button
+                  type="button"
+                  onClick={() => setSelectedSubcat('all')}
+                  className={`h-[32px] px-3.5 rounded-full text-[12px] font-bold whitespace-nowrap shrink-0 ${
+                    selectedSubcat === 'all'
+                      ? 'bg-[#D0E6FD] text-[#162660]'
                       : 'bg-white border border-[#E9E1D5] text-[#454F70] hover:bg-[#F8F2E9]'
                   }`}
                 >
-                  {cat.name}
+                  All {activeCategoryObj.name}
                 </button>
-              );
-            })}
+                {activeCategoryObj.subcategories.map((sub) => (
+                  <button
+                    key={sub}
+                    type="button"
+                    onClick={() => setSelectedSubcat(sub)}
+                    className={`h-[32px] px-3.5 rounded-full text-[12px] font-bold whitespace-nowrap shrink-0 ${
+                      selectedSubcat === sub
+                        ? 'bg-[#D0E6FD] text-[#162660]'
+                        : 'bg-white border border-[#E9E1D5] text-[#454F70] hover:bg-[#F8F2E9]'
+                    }`}
+                  >
+                    {sub}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Product Tile Grid (ProductArtSvg + color dot + price + stock dot) */}
+        {/* Product Tile Grid (ProductArtSvg + color dot + offer badge + price + stock dot) */}
         <div className="flex-1 overflow-y-auto px-4 sm:px-5 pb-24 lg:pb-4">
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
             {filteredProducts.map((product) => {
@@ -718,6 +840,12 @@ export function PosRegisterView({
               const out = product.stockQty <= 0;
               const low = !out && product.stockQty <= product.minStock;
               const inCart = cart.find((c) => c.productId === product.id);
+              const hasOffer = isOfferActive(product.offer);
+              const offerBadge = hasOffer ? formatOfferBadge(product.offer, cur) : '';
+              const effectivePrice = hasOffer
+                ? getEffectiveUnitPrice(product)
+                : product.salePrice;
+
               return (
                 <button
                   key={product.id}
@@ -748,10 +876,16 @@ export function PosRegisterView({
                         {inCart.qty}
                       </span>
                     )}
-                    {out && (
+                    {out ? (
                       <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-[#FDF0EF] text-[#B42318] text-[10px] font-bold">
                         Sold out
                       </span>
+                    ) : (
+                      offerBadge && (
+                        <span className="absolute top-2 left-2 max-w-[78%] truncate px-2 py-0.5 rounded-full bg-[#162660] text-[#D0E6FD] text-[10px] font-bold shadow-xs">
+                          {offerBadge}
+                        </span>
+                      )
                     )}
                   </div>
 
@@ -762,15 +896,24 @@ export function PosRegisterView({
                         {product.name}
                       </p>
                       <p className="text-[12px] text-[#5B6585] truncate mt-0.5">
-                        {product.variant || product.sku}
+                        {product.subcategory
+                          ? `${product.subcategory} · ${product.variant || product.sku}`
+                          : product.variant || product.sku}
                       </p>
                     </div>
 
                     <div className="flex items-center justify-between gap-1 pt-1">
-                      <span className="num text-[15px] font-bold text-[#162660]">
-                        {formatMoney(product.salePrice, cur)}
-                      </span>
-                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#5B6585] tabular-num">
+                      <div className="flex items-baseline gap-1.5 min-w-0">
+                        <span className="num text-[15px] font-bold text-[#162660]">
+                          {formatMoney(effectivePrice, cur)}
+                        </span>
+                        {effectivePrice < product.salePrice && (
+                          <span className="num text-[11px] text-[#5B6585] line-through truncate">
+                            {formatMoney(product.salePrice, cur)}
+                          </span>
+                        )}
+                      </div>
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#5B6585] tabular-num shrink-0">
                         <span
                           className={`w-2 h-2 rounded-full ${
                             out ? 'bg-[#E36B5D]' : low ? 'bg-[#C99A06]' : 'bg-[#2F9E63]'

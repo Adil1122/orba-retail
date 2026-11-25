@@ -45,19 +45,21 @@ const SESSION_SECRET =
     )
     .digest('hex');
 
-const SHOP_KIND_CATEGORIES: Record<ShopKind, { name: string; color: string; description: string }[]> = {
+const SHOP_KIND_CATEGORIES: Record<
+  ShopKind,
+  { name: string; color: string; description: string; subcategories?: string[] }[]
+> = {
   clothing: [
-    { name: 'Unstitched', color: '#162660', description: 'Seasonal cotton, lawn & wash-n-wear suits' },
+    { name: 'Footwear', color: '#7A5320', description: 'Men, Women & Kids chappals, loafers & sneakers', subcategories: ['Men', 'Women', 'Kids'] },
+    { name: 'Bags', color: '#162660', description: 'Men, Women & Kids totes, backpacks & leather bags', subcategories: ['Men', 'Women', 'Kids'] },
+    { name: 'Unstitched', color: '#24398A', description: 'Seasonal cotton, lawn & wash-n-wear suits' },
     { name: 'Ready to Wear', color: '#2E46A0', description: 'Stitched kurtas, shirts & trousers' },
-    { name: 'Footwear', color: '#7A5320', description: 'Peshawari chappals, loafers & sneakers' },
     { name: 'Accessories', color: '#2F4A2E', description: 'Shawls, leather belts, wallets & perfumes' },
     { name: 'Kids Wear', color: '#4A3A5A', description: 'Festive & casual junior collection' },
   ],
   shoes: [
-    { name: 'Men Footwear', color: '#162660', description: 'Loafers, chappals & formal shoes' },
-    { name: 'Women Footwear', color: '#7A5320', description: 'Khussas, sandals & heels' },
-    { name: 'Sneakers', color: '#2E46A0', description: 'Athletic & casual everyday trainers' },
-    { name: 'Kids Shoes', color: '#4A3A5A', description: 'School & festive children shoes' },
+    { name: 'Footwear', color: '#7A5320', description: 'Men, Women & Kids loafers, chappals & sneakers', subcategories: ['Men', 'Women', 'Kids'] },
+    { name: 'Bags', color: '#162660', description: 'Men, Women & Kids handbags, backpacks & leather bags', subcategories: ['Men', 'Women', 'Kids'] },
     { name: 'Care & Socks', color: '#2F4A2E', description: 'Polish, insoles & cotton socks' },
   ],
   pharmacy: [
@@ -192,15 +194,43 @@ class ZyroStore {
     return { workspace, credentials };
   }
 
+  private ensureCanonicalDefaults(ws: WorkspacePayload): void {
+    if (!Array.isArray(ws.approvals)) {
+      ws.approvals = createInitialWorkspace().approvals;
+    }
+    // Ensure Footwear and Bags categories carry Men, Women, Kids subcategories
+    for (const cat of ws.categories) {
+      const lower = cat.name.toLowerCase();
+      if (
+        (lower === 'footwear' || lower === 'bags' || lower === 'shoes') &&
+        (!Array.isArray(cat.subcategories) || cat.subcategories.length === 0)
+      ) {
+        cat.subcategories = ['Men', 'Women', 'Kids'];
+      }
+    }
+    if (!ws.categories.some((c) => c.name.toLowerCase() === 'bags')) {
+      ws.categories.splice(1, 0, {
+        id: 'cat_bags',
+        name: 'Bags',
+        color: '#162660',
+        description: 'Men, Women & Kids totes, backpacks & leather bags',
+        subcategories: ['Men', 'Women', 'Kids'],
+      });
+    }
+    // Ensure default owner account supports 03465629140 phone login if still on seed owner email
+    const seedOwner = ws.staff.find((u) => u.id === 'usr_owner');
+    if (seedOwner && (!seedOwner.phone || normalizePhone(seedOwner.phone) === '923004829104')) {
+      seedOwner.phone = '03465629140';
+    }
+  }
+
   private loadLocal(): PersistedEnvelope {
     try {
       if (fs.existsSync(DATA_FILE)) {
         const raw = fs.readFileSync(DATA_FILE, 'utf8');
         const parsed = JSON.parse(raw) as PersistedEnvelope;
         if (parsed && parsed.workspace && Array.isArray(parsed.workspace.products)) {
-          if (!Array.isArray(parsed.workspace.approvals)) {
-            parsed.workspace.approvals = createInitialWorkspace().approvals;
-          }
+          this.ensureCanonicalDefaults(parsed.workspace);
           return parsed;
         }
       }
@@ -239,6 +269,7 @@ class ZyroStore {
         if (p.workspace && typeof p.workspace === 'object') {
           const ws = p.workspace as WorkspacePayload;
           if (Array.isArray(ws.products)) {
+            this.ensureCanonicalDefaults(ws);
             this.data.workspace = ws;
             if (Array.isArray(p.credentials) && p.credentials.length > 0) {
               this.data.credentials = p.credentials as AuthCredentialRecord[];
@@ -246,7 +277,9 @@ class ZyroStore {
             this.saveLocal(this.data);
           }
         } else if (Array.isArray((p as unknown as WorkspacePayload).products)) {
-          this.data.workspace = p as unknown as WorkspacePayload;
+          const ws = p as unknown as WorkspacePayload;
+          this.ensureCanonicalDefaults(ws);
+          this.data.workspace = ws;
           this.saveLocal(this.data);
         }
       }
@@ -341,46 +374,84 @@ class ZyroStore {
   ): Promise<{ user: StaffUser; token: string } | null> {
     await this.ensureHydrated();
     const raw = identifier.trim();
+    const normPhone = normalizePhone(raw);
+    const isEmailInput = raw.includes('@');
     const matchedStaff = this.findStaffByIdentifier(raw);
-    const cleanEmail = matchedStaff ? matchedStaff.email.toLowerCase() : raw.toLowerCase();
 
-    // 1. Verify against Supabase Auth if configured
+    // Build candidate emails & phone formats for Supabase Auth (no Twilio/OTP provider needed)
+    const candidateEmails = new Set<string>();
+    if (isEmailInput) candidateEmails.add(raw.toLowerCase());
+    if (matchedStaff?.email) candidateEmails.add(matchedStaff.email.toLowerCase());
+    if (normPhone) {
+      candidateEmails.add(`${normPhone}@zyropos.app`);
+      candidateEmails.add(`${normPhone}@zyro.app`);
+      candidateEmails.add(`0${normPhone.slice(2)}@zyropos.app`);
+      candidateEmails.add(`0${normPhone.slice(2)}@zyro.app`);
+    }
+
+    // 1. Verify against Supabase Auth if configured (supports email, phone+password, and phone metadata lookup without Twilio)
     const sbAuth = getSupabaseAuthClient();
-    if (sbAuth && cleanEmail.includes('@')) {
-      try {
-        const { data, error } = await sbAuth.auth.signInWithPassword({
-          email: cleanEmail,
-          password,
-        });
-        if (!error && data.user && data.session) {
-          let staff = this.findStaffByEmail(cleanEmail);
-          if (!staff) {
-            staff = {
-              id: data.user.id,
-              name:
-                (data.user.user_metadata?.full_name as string) ||
-                (data.user.user_metadata?.name as string) ||
-                cleanEmail.split('@')[0],
-              email: cleanEmail,
-              role: 'owner',
-              phone: (data.user.user_metadata?.phone as string) || '',
-              active: true,
-              avatarBg: '#EAF2FD',
-              avatarFg: '#24398A',
-              createdAt: new Date().toISOString(),
-            };
-            this.data.workspace.staff.push(staff);
-            await this.persist();
+    const sbService = getSupabaseServiceClient();
+
+    if (sbAuth) {
+      // If logging in by mobile number (e.g. 03465629140) and service role is available, resolve real Supabase Auth user by phone/metadata
+      if (!isEmailInput && normPhone && sbService && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        try {
+          const { data: listData } = await sbService.auth.admin.listUsers({ page: 1, perPage: 200 });
+          const sbUser = listData?.users?.find((u) => {
+            const phones = [
+              u.phone || '',
+              typeof u.user_metadata?.phone === 'string' ? u.user_metadata.phone : '',
+              typeof u.user_metadata?.mobile === 'string' ? u.user_metadata.mobile : '',
+            ];
+            return phones.some((p) => p && normalizePhone(p) === normPhone);
+          });
+          if (sbUser?.email) {
+            candidateEmails.add(sbUser.email.toLowerCase());
           }
-          return { user: staff, token: data.session.access_token };
+        } catch {
+          // Ignore admin listUsers error and continue trying direct signInWithPassword
         }
-      } catch {
-        // Fall through to local credential verification
+      }
+
+      // 1a. Try Supabase Auth native phone + password sign-in (works without Twilio when user has a password set)
+      if (!isEmailInput && normPhone) {
+        for (const phoneFmt of [`+${normPhone}`, normPhone, `0${normPhone.slice(2)}`]) {
+          try {
+            const { data, error } = await sbAuth.auth.signInWithPassword({
+              phone: phoneFmt,
+              password,
+            });
+            if (!error && data.user && data.session) {
+              const staff = await this.ensureStaffFromSupabaseUser(data.user, raw);
+              return { user: staff, token: data.session.access_token };
+            }
+          } catch {
+            // Try next format
+          }
+        }
+      }
+
+      // 1b. Try Supabase Auth email + password across resolved candidate emails
+      for (const emailCandidate of candidateEmails) {
+        if (!emailCandidate.includes('@')) continue;
+        try {
+          const { data, error } = await sbAuth.auth.signInWithPassword({
+            email: emailCandidate,
+            password,
+          });
+          if (!error && data.user && data.session) {
+            const staff = await this.ensureStaffFromSupabaseUser(data.user, raw);
+            return { user: staff, token: data.session.access_token };
+          }
+        } catch {
+          // Fall through to next candidate or local verification
+        }
       }
     }
 
-    // 2. Local scrypt credential check (supports email OR normalized phone)
-    const normPhone = normalizePhone(raw);
+    // 2. Local scrypt credential check (supports email OR normalized mobile number like 03465629140)
+    const cleanEmail = matchedStaff ? matchedStaff.email.toLowerCase() : raw.toLowerCase();
     const cred = this.data.credentials.find(
       (c) =>
         c.email === cleanEmail ||
@@ -393,6 +464,47 @@ class ZyroStore {
     if (!staff || !staff.active) return null;
     const token = createSessionToken(staff);
     return { user: staff, token };
+  }
+
+  private async ensureStaffFromSupabaseUser(
+    sbUser: { id: string; email?: string; phone?: string; user_metadata?: Record<string, unknown> },
+    fallbackIdentifier: string
+  ): Promise<StaffUser> {
+    const email = (sbUser.email || '').toLowerCase();
+    const phone =
+      sbUser.phone ||
+      (typeof sbUser.user_metadata?.phone === 'string' ? sbUser.user_metadata.phone : '') ||
+      (!fallbackIdentifier.includes('@') ? fallbackIdentifier : '');
+    let staff =
+      (email ? this.findStaffByEmail(email) : undefined) ||
+      (phone ? this.findStaffByPhone(phone) : undefined) ||
+      this.findStaffById(sbUser.id);
+
+    if (!staff) {
+      const metaRole = sbUser.user_metadata?.role;
+      const role: UserRole =
+        metaRole === 'owner' || metaRole === 'manager' || metaRole === 'cashier' || metaRole === 'stock'
+          ? metaRole
+          : 'owner';
+      staff = {
+        id: sbUser.id,
+        name:
+          (typeof sbUser.user_metadata?.full_name === 'string' && sbUser.user_metadata.full_name) ||
+          (typeof sbUser.user_metadata?.name === 'string' && sbUser.user_metadata.name) ||
+          (email ? email.split('@')[0] : 'Shop Owner'),
+        email: email || `${normalizePhone(phone) || sbUser.id}@zyropos.app`,
+        role,
+        phone,
+        pin: '1234',
+        active: true,
+        avatarBg: '#EAF2FD',
+        avatarFg: '#24398A',
+        createdAt: new Date().toISOString(),
+      };
+      this.data.workspace.staff.push(staff);
+      await this.persist();
+    }
+    return staff;
   }
 
   public async loginWithPin(
@@ -448,19 +560,22 @@ class ZyroStore {
     let userId = `usr_${crypto.randomBytes(5).toString('hex')}`;
     let supabaseAccessToken: string | null = null;
 
-    // 1. Register in Supabase Auth if configured (prefer admin.createUser with email_confirm: true so user isn't blocked)
+    // 1. Register in Supabase Auth if configured (auto-confirmed without Twilio/SMS OTP provider)
     const sbService = getSupabaseServiceClient();
     const sbAuth = getSupabaseAuthClient();
     if (sbService && process.env.SUPABASE_SERVICE_ROLE_KEY) {
       try {
         const { data, error } = await sbService.auth.admin.createUser({
           email: cleanEmail,
+          phone: normPhone ? `+${normPhone}` : undefined,
           password: input.password,
           email_confirm: true,
+          phone_confirm: Boolean(normPhone),
           user_metadata: {
             full_name: input.name.trim(),
             shop_name: input.shopName?.trim() || '',
             phone: cleanPhone,
+            role: 'owner',
           },
         });
         if (!error && data.user) {
@@ -547,6 +662,7 @@ class ZyroStore {
               name: kc.name,
               color: kc.color,
               description: kc.description,
+              subcategories: kc.subcategories ? [...kc.subcategories] : undefined,
             };
             this.data.workspace.categories.push(cat);
           }
