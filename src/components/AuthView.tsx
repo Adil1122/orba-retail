@@ -4,10 +4,28 @@ import { api, setStoredToken } from '../lib/api.ts';
 import type { StaffUser } from '../types/pos.ts';
 import { ZyroLogo } from './BrandMark.tsx';
 
-export function AuthView({ onSuccess }: { onSuccess: (user: StaffUser) => void }) {
-  const [mode, setMode] = useState<'login' | 'register'>('login');
-  const [email, setEmail] = useState('owner@zyropos.app');
+export function AuthView({
+  onSuccess,
+  initialMode = 'login',
+  initialEmail = 'owner@zyropos.app',
+  onModeChange,
+}: {
+  onSuccess: (user: StaffUser) => void;
+  initialMode?: 'login' | 'register';
+  initialEmail?: string;
+  onModeChange?: (mode: 'login' | 'register') => void;
+}) {
+  const [mode, setMode] = useState<'login' | 'register'>(initialMode);
+  const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState('zyro1234');
+
+  useEffect(() => {
+    setMode(initialMode);
+  }, [initialMode]);
+
+  useEffect(() => {
+    setEmail(initialEmail);
+  }, [initialEmail]);
   const [name, setName] = useState('');
   const [shopName, setShopName] = useState('');
   const [phone, setPhone] = useState('');
@@ -154,6 +172,7 @@ export function AuthView({ onSuccess }: { onSuccess: (user: StaffUser) => void }
                 onClick={() => {
                   setMode('login');
                   setError('');
+                  onModeChange?.('login');
                 }}
                 className={`h-10 rounded-[9px] text-[14px] font-semibold transition-all ${
                   mode === 'login'
@@ -168,6 +187,7 @@ export function AuthView({ onSuccess }: { onSuccess: (user: StaffUser) => void }
                 onClick={() => {
                   setMode('register');
                   setError('');
+                  onModeChange?.('register');
                 }}
                 className={`h-10 rounded-[9px] text-[14px] font-semibold transition-all ${
                   mode === 'register'

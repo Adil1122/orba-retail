@@ -15,11 +15,97 @@ import { ReportsView } from './components/ReportsView.tsx';
 import { SettingsView } from './components/SettingsView.tsx';
 import { Receipt80Modal, ToastBanner, ZyroLogo } from './components/BrandMark.tsx';
 
+type ParsedRoute =
+  | { kind: 'auth'; mode: 'login' | 'register' }
+  | { kind: 'section'; section: NavSection; roleHint?: 'owner' | 'cashier' | 'stock' };
+
+const SECTION_TO_PATH: Record<NavSection, string> = {
+  dashboard: '/owner',
+  pos: '/cashier',
+  stock: '/stock',
+  orders: '/orders',
+  customers: '/customers',
+  purchasing: '/purchasing',
+  expenses: '/expenses',
+  cash: '/cash',
+  reports: '/reports',
+  settings: '/settings',
+};
+
+function parsePathname(rawPath: string): ParsedRoute {
+  const clean = rawPath.replace(/\/+$/, '').toLowerCase() || '/';
+  switch (clean) {
+    case '/login':
+      return { kind: 'auth', mode: 'login' };
+    case '/register':
+    case '/signup':
+      return { kind: 'auth', mode: 'register' };
+    case '/':
+    case '/owner':
+    case '/dashboard':
+      return { kind: 'section', section: 'dashboard', roleHint: 'owner' };
+    case '/cashier':
+    case '/pos':
+    case '/sell':
+      return { kind: 'section', section: 'pos', roleHint: 'cashier' };
+    case '/stock':
+    case '/inventory':
+    case '/products':
+      return { kind: 'section', section: 'stock', roleHint: 'stock' };
+    case '/orders':
+    case '/bills':
+    case '/returns':
+      return { kind: 'section', section: 'orders' };
+    case '/customers':
+    case '/khata':
+      return { kind: 'section', section: 'customers' };
+    case '/purchasing':
+    case '/suppliers':
+      return { kind: 'section', section: 'purchasing' };
+    case '/expenses':
+      return { kind: 'section', section: 'expenses' };
+    case '/cash':
+    case '/shifts':
+      return { kind: 'section', section: 'cash' };
+    case '/reports':
+      return { kind: 'section', section: 'reports' };
+    case '/settings':
+      return { kind: 'section', section: 'settings' };
+    default:
+      return { kind: 'section', section: 'dashboard' };
+  }
+}
+
+function defaultSectionForRole(role: StaffUser['role']): NavSection {
+  if (role === 'cashier') return 'pos';
+  if (role === 'stock') return 'stock';
+  return 'dashboard';
+}
+
 export default function App() {
+  const initialRoute = parsePathname(window.location.pathname);
+
   const [booting, setBooting] = useState(true);
   const [user, setUser] = useState<StaffUser | null>(null);
   const [workspace, setWorkspace] = useState<WorkspacePayload | null>(null);
-  const [active, setActive] = useState<NavSection>('dashboard');
+  const [active, setActive] = useState<NavSection>(
+    initialRoute.kind === 'section' ? initialRoute.section : 'dashboard'
+  );
+  const [pendingSection, setPendingSection] = useState<NavSection | null>(
+    initialRoute.kind === 'section' && window.location.pathname !== '/' ? initialRoute.section : null
+  );
+  const [authMode, setAuthMode] = useState<'login' | 'register'>(
+    initialRoute.kind === 'auth' ? initialRoute.mode : 'login'
+  );
+  const [authEmailHint, setAuthEmailHint] = useState<string>(() => {
+    if (initialRoute.kind === 'section' && initialRoute.roleHint === 'cashier') {
+      return 'cashier@zyropos.app';
+    }
+    if (initialRoute.kind === 'section' && initialRoute.roleHint === 'stock') {
+      return 'stock@zyropos.app';
+    }
+    return 'owner@zyropos.app';
+  });
   const [receiptSale, setReceiptSale] = useState<Sale | null>(null);
   const [toast, setToast] = useState<{ type: 'ok' | 'err'; message: string } | null>(null);
 
@@ -35,6 +121,35 @@ export default function App() {
     setWorkspace(ws);
   }, []);
 
+  const navigateToSection = useCallback((section: NavSection, replace = false) => {
+    setActive(section);
+    const targetPath = SECTION_TO_PATH[section];
+    if (window.location.pathname !== targetPath) {
+      if (replace) {
+        window.history.replaceState({}, '', targetPath);
+      } else {
+        window.history.pushState({}, '', targetPath);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    const onPopState = () => {
+      const parsed = parsePathname(window.location.pathname);
+      if (parsed.kind === 'auth') {
+        setAuthMode(parsed.mode);
+      } else {
+        setActive(parsed.section);
+        setPendingSection(parsed.section);
+        if (parsed.roleHint === 'cashier') setAuthEmailHint('cashier@zyropos.app');
+        else if (parsed.roleHint === 'stock') setAuthEmailHint('stock@zyropos.app');
+        else if (parsed.roleHint === 'owner') setAuthEmailHint('owner@zyropos.app');
+      }
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
   useEffect(() => {
     let mounted = true;
     async function restoreSession() {
@@ -48,6 +163,14 @@ export default function App() {
         if (mounted) {
           setUser(me);
           setWorkspace(ws);
+          const parsed = parsePathname(window.location.pathname);
+          if (parsed.kind === 'auth' || window.location.pathname === '/') {
+            const target = defaultSectionForRole(me.role);
+            setActive(target);
+            window.history.replaceState({}, '', SECTION_TO_PATH[target]);
+          } else {
+            setActive(parsed.section);
+          }
         }
       } catch {
         setStoredToken(null);
@@ -66,7 +189,9 @@ export default function App() {
     try {
       const ws = await api.getWorkspace();
       setWorkspace(ws);
-      setActive(loggedInUser.role === 'cashier' ? 'pos' : 'dashboard');
+      const target = pendingSection ?? defaultSectionForRole(loggedInUser.role);
+      setPendingSection(null);
+      navigateToSection(target, true);
     } catch (err) {
       notify('err', err instanceof Error ? err.message : 'Failed to load workspace.');
     }
@@ -81,7 +206,9 @@ export default function App() {
     setStoredToken(null);
     setUser(null);
     setWorkspace(null);
-    setActive('dashboard');
+    setPendingSection(null);
+    setAuthMode('login');
+    window.history.pushState({}, '', '/login');
   }
 
   if (booting) {
@@ -94,7 +221,17 @@ export default function App() {
   }
 
   if (!user || !workspace) {
-    return <AuthView onSuccess={handleAuthSuccess} />;
+    return (
+      <AuthView
+        onSuccess={handleAuthSuccess}
+        initialMode={authMode}
+        initialEmail={authEmailHint}
+        onModeChange={(nextMode) => {
+          setAuthMode(nextMode);
+          window.history.replaceState({}, '', nextMode === 'register' ? '/register' : '/login');
+        }}
+      />
+    );
   }
 
   const lowStockCount = workspace.products.filter((p) => p.active && p.stockQty <= p.minStock).length;
@@ -103,7 +240,7 @@ export default function App() {
     <>
       <AppShell
         active={active}
-        onNavigate={setActive}
+        onNavigate={navigateToSection}
         user={user}
         settings={workspace.settings}
         onLogout={handleLogout}
@@ -113,7 +250,7 @@ export default function App() {
         {active === 'dashboard' && (
           <DashboardView
             workspace={workspace}
-            onNavigate={setActive}
+            onNavigate={navigateToSection}
             onOpenReceipt={setReceiptSale}
           />
         )}

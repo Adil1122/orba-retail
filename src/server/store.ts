@@ -21,14 +21,19 @@ interface PersistedEnvelope {
   credentials: AuthCredentialRecord[];
 }
 
-const DATA_DIR = path.resolve(process.cwd(), 'data');
+const DATA_DIR = process.env.VERCEL
+  ? path.join('/tmp', 'zyro-pos-data')
+  : path.resolve(process.cwd(), 'data');
 const DATA_FILE = path.join(DATA_DIR, 'zyro-store.json');
 const SUPABASE_STATE_TABLE = 'zyro_workspace_state';
 const SUPABASE_WORKSPACE_KEY = 'default';
 
 const SESSION_SECRET =
   process.env.SESSION_SECRET ||
-  crypto.createHash('sha256').update(process.cwd() + '_zyro_pos_session_v1').digest('hex');
+  crypto
+    .createHash('sha256')
+    .update((process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || 'zyro_pos') + '_zyro_pos_session_v1')
+    .digest('hex');
 
 function hashPassword(password: string, salt?: string): { salt: string; hash: string } {
   const actualSalt = salt || crypto.randomBytes(16).toString('hex');
