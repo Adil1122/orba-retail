@@ -1,0 +1,6 @@
+{
+  "name": "ZYRO Retail POS New",
+  "description": "Complete retail point-of-sale, inventory, khata credit ledger, purchasing, cash shift, and reporting platform with Supabase integration.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,129 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Outfit", "Segoe UI", Roboto, system-ui, sans-serif;
+  --font-display: "Outfit", "Segoe UI", Roboto, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Primary Brand */
+  --color-zyro-primary: #162660;
+  --color-zyro-primary-hover: #111E50;
+  --color-zyro-primary-text: #2E46A0;
+
+  /* Accent */
+  --color-zyro-accent: #D0E6FD;
+  --color-zyro-accent-hover: #DCECFE;
+  --color-zyro-accent-deep: #2E46A0;
+  --color-zyro-accent-tint: #EEF5FE;
+  --color-zyro-accent-tint-hover: #D0E6FD;
+  --color-zyro-accent-line: #B5D3F5;
+
+  /* Typography */
+  --color-zyro-ink: #162660;
+  --color-zyro-body: #454F70;
+  --color-zyro-muted: #5B6585;
+
+  /* Backgrounds & Surfaces */
+  --color-zyro-page: #F1E4D1;
+  --color-zyro-card: #FFFFFF;
+  --color-zyro-raised: #F8F2E9;
+  --color-zyro-neutral: #F6F0E7;
+  --color-zyro-track: #ECE4D8;
+  --color-zyro-hover: #F8F2E9;
+
+  /* Lines & Borders */
+  --color-zyro-divider: #F6F0E7;
+  --color-zyro-border: #E9E1D5;
+  --color-zyro-control: #D9CFC0;
+  --color-zyro-field: #8A8276;
+  --color-zyro-dashed: #C8BCAA;
+
+  /* Status */
+  --color-zyro-ok-bg: #E8F6EE;
+  --color-zyro-ok-fg: #14532D;
+  --color-zyro-ok-accent: #2F9E63;
+  --color-zyro-warn-bg: #FFF3C4;
+  --color-zyro-warn-fg: #6B4E00;
+  --color-zyro-warn-line: #EBD892;
+  --color-zyro-err-bg: #FDF0EF;
+  --color-zyro-err-fg: #B42318;
+  --color-zyro-err-line: #F2C4BE;
+  --color-zyro-info-bg: #EAF2FD;
+  --color-zyro-info-fg: #24398A;
+}
+
+@layer base {
+  html,
+  body {
+    font-family: var(--font-sans);
+    background-color: #F1E4D1;
+    color: #162660;
+    overflow-x: hidden;
+  }
+
+  button:not(:disabled),
+  a[href] {
+    cursor: pointer;
+  }
+
+  input,
+  select,
+  textarea {
+    color: #162660;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: #5B6585;
+  }
+}
+
+.tabular-num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Custom subtle warm scrollbars matching the design system */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #D9CFC0;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #B8AC9B;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Print styling for 80mm thermal receipts */
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+  #zyro-receipt-print,
+  #zyro-receipt-print * {
+    visibility: visible !important;
+  }
+  #zyro-receipt-print {
+    position: fixed !important;
+    inset: 0 auto auto 0 !important;
+    width: 80mm !important;
+    margin: 0 !important;
+    padding: 8px !important;
+    background: #FFFFFF !important;
+    color: #111111 !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+}
