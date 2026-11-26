@@ -1,0 +1,120 @@
+// @ts-nocheck
+'use client';
+
+import React from 'react';
+import { dcStyle, dcStr, dcLinkClick, dcHref } from '@/lib/dcRuntime';
+import {
+  CUSTOMERS,
+  ICONS,
+  METHODS,
+  SET,
+  STATUS,
+  digits,
+  lineTotal,
+  mkLine,
+  n,
+  openBoard,
+  phoneFmt,
+  rs,
+  rz,
+  taxIn
+} from '@/lib/common';
+import Receipt80 from '@/components/pos/Receipt80';
+
+const DEFAULT_PROPS: Record<string, any> = {
+  "w": 1280,
+  "h": 800,
+  "offline": false,
+  "fbr": "auto",
+  "demo": "cash"
+};
+
+function demoSale(kind) {
+var lines = [mkLine('tee', 0, 1, 2), mkLine('chappal', 0, 2, 1), mkLine('socks', null, null, 1)];
+var sub = lines.reduce(function (a, l) { return a + lineTotal(l); }, 0);
+var s = { billNo: 1043, lines: lines, subtotal: sub, discount: 0, goods: sub, fee: 1, tax: taxIn(sub), total: sub + 1, count: 4, staff: 'Ali', customer: null, method: 'Cash', parts: [{ method: 'Cash', amount: sub + 1 }], received: 10000, change: 10000 - sub - 1 };
+if (kind === 'wallet') { s.method = 'JazzCash'; s.parts = [{ method: 'JazzCash', amount: sub + 1, ref: '012345678901' }]; s.received = sub + 1; s.change = 0; }
+if (kind === 'split') { s.method = 'Split'; s.parts = [{ method: 'Cash', amount: 5000 }, { method: 'JazzCash', amount: 2851, ref: '0129' }]; s.received = sub + 1; s.change = 0; }
+if (kind === 'customer') { s.customer = CUSTOMERS[0]; s.method = 'Card'; s.parts = [{ method: 'Card', amount: sub + 1, ref: 'A41C9F' }]; s.received = sub + 1; s.change = 0; }
+return s;
+}
+class CompleteBase extends React.Component<any, any> {
+  static defaultProps = DEFAULT_PROPS;
+
+constructor(props) {
+super(props);
+var p = props || {};
+this.timers = {};
+this.state = { printing: false, printFail: (p.demo || 'cash') === 'printerFail', waSent: false, waPhone: '', consent: false, preview: false, prints: 0 };
+}
+componentDidMount() { var self = this, p = this.props || {}; if (SET.pr.auto && (p.demo || 'cash') !== 'printerFail') { this.setState({ printing: true }); this.timers.ap = setTimeout(function () { self.setState({ printing: false, prints: SET.pr.copies ? 2 : 1 }); }, 900); } }
+componentWillUnmount() { var t = this.timers; Object.keys(t).forEach(function (k) { clearTimeout(t[k]); }); }
+renderVals() {
+var self = this, s = this.state, p = this.props || {};
+var W = p.w || 1280, H = p.h || 800, tight = H < 700;
+var demo = p.demo || 'cash';
+var sale = p.sale && p.sale.lines && p.sale.lines.length ? p.sale : demoSale(demo === 'printerFail' ? 'cash' : demo);
+var isCash = sale.method === 'Cash';
+var mix = '';
+if (isCash && sale.change > 0) { var r = sale.change, parts = []; [5000, 1000, 500, 100, 50, 20, 10].forEach(function (v) { var k = Math.floor(r / v); if (k) { parts.push(k + ' × ' + n(v)); r -= k * v; } }); mix = parts.join(' · '); }
+var cu = sale.customer;
+var offline = !!p.offline, fbrMode = p.fbr && p.fbr !== 'auto' ? p.fbr : (SET.fbr.on ? 'connected' : 'notRequired'), waOn = SET.wa.on && SET.wa.bill;
+var waDigits = digits(s.waPhone, 13).replace(/^92/, '').replace(/^0/, '');
+var waOk = /^3\d{9}$/.test(waDigits);
+var saveChip = offline ? { bg: STATUS.warn.bg, fg: STATUS.warn.fg, d: ICONS.wifiOff, text: 'Saved on this device · syncs later' } : { bg: STATUS.ok.bg, fg: STATUS.ok.fg, d: ICONS.cloud, text: 'Saved' };
+var fbrChip = fbrMode === 'connected' ? (offline ? { bg: STATUS.warn.bg, fg: STATUS.warn.fg, text: 'FBR number pending' } : { bg: STATUS.ok.bg, fg: STATUS.ok.fg, text: 'FBR invoice' })
+: (fbrMode === 'queued' ? { bg: STATUS.warn.bg, fg: STATUS.warn.fg, text: 'FBR number pending' } : { bg: STATUS.neutral.bg, fg: STATUS.neutral.fg, text: 'Non-tax bill' });
+var paidNote = sale.method === 'Split' ? 'Split across ' + sale.parts.length + ' payments, each checked by the cashier.' : (isCash ? '' : sale.method + ' checked by the cashier, not confirmed by the provider.');
+var msg = 'Assalam o Alaikum! Thank you for shopping at Hamza Fashion.\nBill ' + sale.billNo + ' · Rs ' + n(sale.total) + ' · ' + sale.count + ' items\nPaid by ' + sale.method + '\nYour receipt: zyropos.pk/b/' + (sale.billNo * 7 + 1234).toString(36).toUpperCase();
+var asideW = W < 1200 ? 340 : 400;
+var rScale = W < 1200 ? 0.9 : 1;
+return {
+ic: ICONS, W: W, H: H, gap: tight ? 12 : 18, padY: tight ? 20 : 32, boxPad: tight ? 16 : 24, bigSize: tight ? 34 : 52,
+billNo: sale.billNo, staff: sale.staff || 'Ali', custLine: cu ? cu.name : 'Walk-in', nextBill: sale.billNo + 1,
+saveChip: saveChip, fbrChip: fbrChip, fbrMode: fbrMode, offline: offline, sale: sale,
+giveChange: isCash && sale.change > 0, paidFull: !(isCash && sale.change > 0),
+changeN: n(sale.change), recvN: n(sale.received), totalN: n(sale.total), mix: mix ? 'Give back: ' + mix : '', paidNote: paidNote,
+parts: (sale.parts || []).map(function (x) { var m = METHODS.filter(function (mm) { return mm.label === x.method; })[0] || METHODS[0]; return { label: x.method + (x.ref ? ' · ' + x.ref.slice(-4) : ''), n: n(x.amount), d: m.d }; }),
+printing: s.printing, notPrinting: !s.printing, printLabel: s.printing ? 'Sending to printer…' : (s.prints ? (s.prints > 1 ? 'Printed · 2 copies · print again' : 'Printed · print again') : 'Print receipt'), giftOn: SET.pr.gift, gift: function () { self.setState({ gift: true }); }, giftLabel: s.gift ? 'Gift receipt printed' : 'Gift receipt', waOff: !waOn, printFail: s.printFail,
+print: function () {
+self.setState({ printing: true, printFail: false });
+self.timers.p = setTimeout(function () { var fail = demo === 'printerFail' && self.state.prints === 0; self.setState({ printing: false, printFail: fail, prints: self.state.prints + (fail ? 0 : 1) }); }, 900);
+},
+savePdf: function () { self.setState({ printFail: false }); },
+dismissFail: function () { self.setState({ printFail: false }); },
+waKnown: waOn && !!cu, waAsk: waOn && !cu && !s.waSent, waSent: waOn && s.waSent,
+waKnownLabel: cu ? 'WhatsApp to ' + cu.name.split(' ')[0] + ' · ' + phoneFmt(cu.phone) : '',
+waSentText: 'Sent on WhatsApp from 0321 4567890 to ' + (cu ? phoneFmt(cu.phone) : '0' + waDigits.slice(0, 3) + ' ' + waDigits.slice(3)),
+waPhone: s.waPhone, onWaPhone: function (e) { self.setState({ waPhone: e.target.value.replace(/[^\d\s+]/g, '').slice(0, 14) }); },
+waBd: s.waPhone && !waOk ? '#B42318' : '#D9CFC0', cantWa: !waOk || !s.consent,
+consent: s.consent, consentStr: s.consent ? 'true' : 'false', boxBg: s.consent ? '#2E46A0' : '#ffffff', boxBd: s.consent ? '#2E46A0' : '#8A8276',
+toggleConsent: function () { self.setState({ consent: !self.state.consent }); },
+showPreview: s.preview, previewStr: s.preview ? 'true' : 'false', previewLabel: s.preview ? 'Hide message' : 'Preview message', waMessage: msg,
+togglePreview: function () { self.setState({ preview: !self.state.preview }); },
+sendWa: function () { if (cu || (waOk && s.consent)) self.setState({ waSent: true, preview: false }); },
+newSale: function () { if (p.onNewSale) p.onNewSale(); else openBoard('Main'); },
+scanNext: function () { if (p.onScanNext) p.onScanNext(); else openBoard('Main'); },
+asideW: asideW, rScale: rScale, rH: Math.round(900 * rScale), toastRight: asideW + 40
+};
+}
+}
+
+rz(CompleteBase, 1280, 800);
+
+export default class Complete extends CompleteBase {
+  static defaultProps = DEFAULT_PROPS;
+
+  constructor(props: any) {
+    super(props);
+    if (!this.state) this.state = {};
+  }
+
+  render() {
+    const v: any = this.renderVals ? this.renderVals() : {};
+    return (
+      <>
+        <div className="rzc-stack" data-nar={(v?.nar) == null || (v?.nar) === false ? undefined : (v?.nar) === true ? '' : String(v?.nar)} data-mid={(v?.mid) == null || (v?.mid) === false ? undefined : (v?.mid) === true ? '' : String(v?.mid)} data-cmp={(v?.cmp) == null || (v?.cmp) === false ? undefined : (v?.cmp) === true ? '' : String(v?.cmp)} style={dcStyle(("width:" + dcStr(v?.W) + "px;height:" + dcStr(v?.H) + "px;position:relative;overflow:hidden;display:flex;background:#F1E4D1;color:#162660;font-family:Outfit,'Segoe UI',Roboto,system-ui,sans-serif;font-size:15px"))}><main className="rzc-free rz-pad" style={dcStyle(("flex:1;min-width:0;display:flex;flex-direction:column;gap:" + dcStr(v?.gap) + "px;padding:" + dcStr(v?.padY) + "px 40px"))}><div className="rz-wrap" style={dcStyle("display:flex;align-items:center;gap:16px")}><span style={dcStyle("width:64px;height:64px;flex:none;border-radius:999px;background:#E8F6EE;color:#14532D;display:flex;align-items:center;justify-content:center;animation:zpop .35s ease-out")}><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={(v?.ic?.check) == null || (v?.ic?.check) === false ? undefined : (v?.ic?.check) === true ? '' : String(v?.ic?.check)} style={dcStyle("stroke-dasharray:48;animation:zdraw .45s ease-out")} /></svg></span><div className="rz-basis" style={dcStyle("flex:1;min-width:0")}><h1 style={dcStyle("margin:0;font-family:Outfit,sans-serif;font-size:26px;font-weight:700")}>{"Sale recorded"}</h1><span className="num" style={dcStyle("font-size:15px;color:#454F70")}>{("Bill " + dcStr(v?.billNo) + " · 12:24 pm · " + dcStr(v?.staff) + " · " + dcStr(v?.custLine))}</span></div><span role="status" style={dcStyle(("height:32px;flex:none;padding:0 12px;border-radius:999px;background:" + dcStr(v?.saveChip?.bg) + ";color:" + dcStr(v?.saveChip?.fg) + ";font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px"))}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={(v?.saveChip?.d) == null || (v?.saveChip?.d) === false ? undefined : (v?.saveChip?.d) === true ? '' : String(v?.saveChip?.d)} /></svg>{dcStr(v?.saveChip?.text)}</span></div>{Boolean(v?.giveChange) ? (<><div className="rz-wrap" role="status" style={dcStyle(("border-radius:22px;background:#162660;color:#ffffff;padding:" + dcStr(v?.boxPad) + "px 28px;display:flex;align-items:flex-end;gap:24px"))}><div className="rz-w100" style={dcStyle("flex:1;min-width:0;display:flex;flex-direction:column;gap:8px")}><span style={dcStyle("font-size:17px;font-weight:600;color:#BFD0EE")}>{"Give change"}</span><span className="num" style={dcStyle(("font-family:Outfit,sans-serif;font-size:" + dcStr(v?.bigSize) + "px;font-weight:700;letter-spacing:-.03em;line-height:1"))}><span className="rs">{"Rs"}</span>{dcStr(v?.changeN)}</span></div><div className="num rz-tal" style={dcStyle("display:flex;flex-direction:column;gap:4px;font-size:15px;color:#BFD0EE;text-align:right")}><span>{("Received Rs " + dcStr(v?.recvN))}</span><span>{("Bill Rs " + dcStr(v?.totalN))}</span><span style={dcStyle("font-size:13px;color:#A9BCE0")}>{dcStr(v?.mix)}</span></div></div></>) : null}{Boolean(v?.paidFull) ? (<><div style={dcStyle(("border-radius:22px;background:#ffffff;border:1px solid #E9E1D5;padding:" + dcStr(v?.boxPad) + "px 28px;display:flex;flex-direction:column;gap:12px"))}><div className="rz-wrap" style={dcStyle("display:flex;align-items:flex-end;gap:20px")}><div className="rz-w100" style={dcStyle("flex:1;display:flex;flex-direction:column;gap:8px")}><span style={dcStyle("font-size:17px;font-weight:600;color:#454F70")}>{"Paid in full"}</span><span className="num" style={dcStyle(("font-family:Outfit,sans-serif;font-size:" + dcStr(v?.bigSize) + "px;font-weight:700;letter-spacing:-.03em;line-height:1"))}><span className="rs">{"Rs"}</span>{dcStr(v?.totalN)}</span></div><span style={dcStyle("font-size:13px;color:#5B6585;text-align:right;max-width:260px")}>{dcStr(v?.paidNote)}</span></div><div style={dcStyle("display:flex;flex-wrap:wrap;gap:8px")}>{(v?.parts || []).map((pt: any, $index: number) => (<React.Fragment key={$index}><span className="num" style={dcStyle("height:32px;padding:0 12px 0 6px;border-radius:999px;background:#F6F0E7;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:8px")}><span style={dcStyle("width:24px;height:24px;border-radius:999px;background:#ffffff;display:flex;align-items:center;justify-content:center")}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#162660" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={(pt?.d) == null || (pt?.d) === false ? undefined : (pt?.d) === true ? '' : String(pt?.d)} /></svg></span>{(dcStr(pt?.label) + " · Rs " + dcStr(pt?.n))}</span></React.Fragment>))}</div></div></>) : null}<section aria-labelledby="rcpt-l" style={dcStyle("background:#ffffff;border:1px solid #E9E1D5;border-radius:20px;padding:18px 20px;display:flex;flex-direction:column;gap:14px")}><span id="rcpt-l" style={dcStyle("font-size:13px;font-weight:600;color:#454F70")}>{"Receipt"}</span><div style={dcStyle("display:flex;gap:10px;flex-wrap:wrap;align-items:center")}><button className="bs" onClick={(typeof (v?.print) === 'function' ? (v?.print) : undefined) as any} disabled={Boolean(v?.printing)} style={dcStyle("height:48px;padding:0 16px;border:1px solid #D9CFC0;border-radius:12px;background:#ffffff;font-size:15px;font-weight:600;display:flex;align-items:center;gap:8px")}>{Boolean(v?.printing) ? (<><span aria-hidden="true" style={dcStyle("width:16px;height:16px;border-radius:999px;border:2px solid rgba(22,38,96,.2);border-top-color:#162660;animation:zspin .8s linear infinite")}></span></>) : null}{Boolean(v?.notPrinting) ? (<><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={(v?.ic?.printer) == null || (v?.ic?.printer) === false ? undefined : (v?.ic?.printer) === true ? '' : String(v?.ic?.printer)} /></svg></>) : null}{("\n" + dcStr(v?.printLabel) + "\n")}</button>{Boolean(v?.giftOn) ? (<><button className="bs" onClick={(typeof (v?.gift) === 'function' ? (v?.gift) : undefined) as any} style={dcStyle("height:48px;padding:0 16px;border:1px solid #D9CFC0;border-radius:12px;background:#ffffff;font-size:15px;font-weight:600")}>{dcStr(v?.giftLabel)}</button></>) : null}{Boolean(v?.waOff) ? (<><span style={dcStyle("font-size:13px;color:#5B6585")}>{"WhatsApp receipts are off in Settings › WhatsApp"}</span></>) : null}{Boolean(v?.waKnown) ? (<><button className="bs" onClick={(typeof (v?.sendWa) === 'function' ? (v?.sendWa) : undefined) as any} disabled={Boolean(v?.waSent)} style={dcStyle("height:48px;padding:0 16px;border:1px solid #D9CFC0;border-radius:12px;background:#ffffff;font-size:15px;font-weight:600;display:flex;align-items:center;gap:8px")}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={(v?.ic?.chat) == null || (v?.ic?.chat) === false ? undefined : (v?.ic?.chat) === true ? '' : String(v?.ic?.chat)} /></svg><span className="num">{dcStr(v?.waKnownLabel)}</span></button></>) : null}{Boolean(v?.waSent) ? (<><span style={dcStyle("height:32px;padding:0 10px;border-radius:999px;background:#E8F6EE;color:#14532D;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px;animation:zfade .2s ease-out")}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={(v?.ic?.checkCircle) == null || (v?.ic?.checkCircle) === false ? undefined : (v?.ic?.checkCircle) === true ? '' : String(v?.ic?.checkCircle)} /></svg><span className="num">{dcStr(v?.waSentText)}</span></span></>) : null}</div>{Boolean(v?.waAsk) ? (<><div style={dcStyle("display:flex;flex-direction:column;gap:10px")}><label htmlFor="wa-phone" style={dcStyle("font-size:13px;font-weight:600;color:#454F70")}>{"WhatsApp the receipt · no customer on this bill"}</label><div style={dcStyle("display:flex;gap:10px")}><div className="field" style={dcStyle(("flex:1;min-width:0;height:52px;display:flex;align-items:center;gap:10px;border:1px solid " + dcStr(v?.waBd) + ";border-radius:14px;padding:0 8px"))}><span style={dcStyle("height:38px;flex:none;padding:0 10px;border-radius:10px;background:#F6F0E7;color:#454F70;font-size:15px;font-weight:600;display:flex;align-items:center")}>{"+92"}</span><input id="wa-phone" className="num" type="tel" inputMode="tel" autoComplete="off" value={dcStr(v?.waPhone)} onChange={(typeof (v?.onWaPhone) === 'function' ? (v?.onWaPhone) : undefined) as any} placeholder="300 1234567 or 0300…" style={dcStyle("flex:1;min-width:0;border:0;outline:0;background:transparent;font-size:17px")} /></div><button className="bs" onClick={(typeof (v?.sendWa) === 'function' ? (v?.sendWa) : undefined) as any} disabled={Boolean(v?.cantWa)} style={dcStyle("height:52px;padding:0 18px;border:1px solid #D9CFC0;border-radius:14px;background:#ffffff;font-size:15px;font-weight:600;display:flex;align-items:center;gap:8px")}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={(v?.ic?.send) == null || (v?.ic?.send) === false ? undefined : (v?.ic?.send) === true ? '' : String(v?.ic?.send)} /></svg>{"Send"}</button></div><div style={dcStyle("display:flex;align-items:center;gap:14px;flex-wrap:wrap")}><button role="checkbox" aria-checked={(v?.consentStr) == null || (v?.consentStr) === false ? undefined : (v?.consentStr) === true ? '' : String(v?.consentStr)} onClick={(typeof (v?.toggleConsent) === 'function' ? (v?.toggleConsent) : undefined) as any} style={dcStyle("height:44px;display:flex;align-items:center;gap:10px;padding:0;border:0;background:transparent;font-size:15px;text-align:left")}><span style={dcStyle(("width:22px;height:22px;flex:none;border-radius:6px;border:2px solid " + dcStr(v?.boxBd) + ";background:" + dcStr(v?.boxBg) + ";display:flex;align-items:center;justify-content:center;color:#ffffff"))}>{Boolean(v?.consent) ? (<><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={(v?.ic?.check) == null || (v?.ic?.check) === false ? undefined : (v?.ic?.check) === true ? '' : String(v?.ic?.check)} /></svg></>) : null}</span>{"\nCustomer agreed to get it on WhatsApp\n"}</button><button className="bt" onClick={(typeof (v?.togglePreview) === 'function' ? (v?.togglePreview) : undefined) as any} aria-expanded={(v?.previewStr) == null || (v?.previewStr) === false ? undefined : (v?.previewStr) === true ? '' : String(v?.previewStr)} style={dcStyle("height:44px;padding:0 4px;border:0;background:transparent;color:#2E46A0;font-size:15px;font-weight:600")}>{dcStr(v?.previewLabel)}</button></div>{Boolean(v?.showPreview) ? (<><div style={dcStyle("align-self:flex-start;max-width:460px;border-radius:4px 16px 16px 16px;background:#F6F0E7;padding:12px 14px;font-size:15px;line-height:1.5;white-space:pre-line;animation:zfade .15s ease-out")} className="num">{dcStr(v?.waMessage)}</div></>) : null}</div></>) : null}</section><div className="rz-wrap" style={dcStyle("margin-top:auto;display:flex;align-items:center;gap:16px;border-radius:20px;border:1px dashed #C8BCAA;padding:16px 20px")}><span style={dcStyle("width:52px;height:52px;flex:none;border-radius:999px;background:#162660;color:#FFFFFF;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden")}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={(v?.ic?.scan) == null || (v?.ic?.scan) === false ? undefined : (v?.ic?.scan) === true ? '' : String(v?.ic?.scan)} /></svg></span><span className="rz-basis" style={dcStyle("flex:1;min-width:0;display:flex;flex-direction:column;gap:2px")}><span style={dcStyle("font-size:17px;font-weight:600")}>{"Scan the next item to start a new sale"}</span><span style={dcStyle("font-size:13px;color:#5B6585")}>{("No need to tap anything. Bill " + dcStr(v?.nextBill) + " opens with the item on it.")}</span></span><button className="bt" onClick={(typeof (v?.scanNext) === 'function' ? (v?.scanNext) : undefined) as any} style={dcStyle("height:44px;padding:0 8px;border:0;background:transparent;color:#2E46A0;font-size:15px;font-weight:600;white-space:nowrap")}>{"Simulate scan"}</button><button className="rz-auto bs" onClick={(typeof (v?.newSale) === 'function' ? (v?.newSale) : undefined) as any} style={dcStyle("height:56px;padding:0 22px;border:1px solid #162660;border-radius:14px;background:#ffffff;color:#162660;font-size:16px;font-weight:700;white-space:nowrap")}>{"New sale"}</button></div></main><aside className="rzc-col rz-hide" aria-label="Receipt preview" style={dcStyle(("width:" + dcStr(v?.asideW) + "px;flex:none;background:#ECE4D8;border-left:1px solid #E9E1D5;display:flex;flex-direction:column"))}><div style={dcStyle("height:56px;flex:none;display:flex;align-items:center;gap:8px;padding:0 20px;font-size:13px;font-weight:600;color:#454F70")}>{"Receipt preview"}<span style={dcStyle(("margin-left:auto;height:26px;padding:0 9px;border-radius:999px;background:" + dcStr(v?.fbrChip?.bg) + ";color:" + dcStr(v?.fbrChip?.fg) + ";font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:5px"))}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={(v?.ic?.shield) == null || (v?.ic?.shield) === false ? undefined : (v?.ic?.shield) === true ? '' : String(v?.ic?.shield)} /></svg>{dcStr(v?.fbrChip?.text)}</span></div><div className="rzc-free" style={dcStyle("flex:1;min-height:0;overflow:auto;display:flex;justify-content:center;padding:4px 0 28px")}><div style={dcStyle(("transform:scale(" + dcStr(v?.rScale) + ");transform-origin:top center;height:" + dcStr(v?.rH) + "px"))}><Receipt80 sale={v?.sale} fbr={v?.fbrMode} offline={v?.offline} /></div></div></aside>{Boolean(v?.printFail) ? (<><div className="rzc-toast" style={dcStyle(("position:absolute;left:40px;right:" + dcStr(v?.toastRight) + "px;bottom:116px;display:flex;justify-content:center;z-index:20"))}><div role="alert" style={dcStyle("min-height:56px;display:flex;align-items:center;gap:10px;padding:6px 6px 6px 16px;border-radius:14px;background:#162660;color:#ffffff;font-size:15px;font-weight:500;box-shadow:0 12px 28px rgba(12,20,50,.28);animation:zup .2s ease-out")}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F7A59B" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={(v?.ic?.err) == null || (v?.ic?.err) === false ? undefined : (v?.ic?.err) === true ? '' : String(v?.ic?.err)} /></svg><span style={dcStyle("padding-right:6px")}>{"Printer not responding · the sale is saved"}</span><button onClick={(typeof (v?.print) === 'function' ? (v?.print) : undefined) as any} style={dcStyle("height:44px;padding:0 14px;border:0;border-radius:10px;background:rgba(255,255,255,.1);color:#D0E6FD;font-size:15px;font-weight:700")}>{"Retry"}</button><button onClick={(typeof (v?.savePdf) === 'function' ? (v?.savePdf) : undefined) as any} style={dcStyle("height:44px;padding:0 14px;border:0;border-radius:10px;background:rgba(255,255,255,.1);color:#D0E6FD;font-size:15px;font-weight:700")}>{"Save PDF"}</button><button onClick={(typeof (v?.dismissFail) === 'function' ? (v?.dismissFail) : undefined) as any} aria-label="Dismiss" style={dcStyle("width:44px;height:44px;border:0;border-radius:10px;background:transparent;color:#BFD0EE;display:flex;align-items:center;justify-content:center")}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d={(v?.ic?.x) == null || (v?.ic?.x) === false ? undefined : (v?.ic?.x) === true ? '' : String(v?.ic?.x)} /></svg></button></div></div></>) : null}</div>
+      </>
+    );
+  }
+}

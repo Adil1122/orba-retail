@@ -1,0 +1,171 @@
+// @ts-nocheck
+'use client';
+
+import React from 'react';
+import { dcStyle, dcStr, dcLinkClick, dcHref } from '@/lib/dcRuntime';
+import {
+  BILLS,
+  CUSTOMERS,
+  ICONS,
+  MANAGER_PIN,
+  METHODS,
+  SET,
+  STATUS,
+  TINT,
+  adjAdd,
+  artFor,
+  billLines,
+  billMethod,
+  billTotal,
+  custById,
+  digits,
+  fbrNo,
+  findItem,
+  ledgerAdd,
+  lineTotal,
+  mkLine,
+  n,
+  openBoard,
+  rs,
+  rz
+} from '@/lib/common';
+
+
+const DEFAULT_PROPS: Record<string, any> = {
+  "w": 1280,
+  "h": 800,
+  "demo": "reasons"
+};
+
+var PAST = [
+{ no: 1032, customer: 'Bilal Ahmed', when: 'Fri 13 Nov, 6:41 pm', method: 'Cash', lines: [mkLine('kurta', 0, 2, 1), mkLine('jeans', 0, 1, 1), mkLine('socks', null, null, 2)] },
+{ no: 1031, customer: 'Walk-in', when: 'Thu 12 Nov, 4:10 pm', method: 'Cash', lines: [mkLine('khussa', 0, 2, 1), mkLine('belt', null, null, 1)] },
+{ no: 1030, customer: 'Ayesha Khan', when: 'Wed 11 Nov, 7:22 pm', method: 'Cash', lines: [mkLine('lawn', 0, 0, 2)] },
+{ no: 1027, customer: 'Walk-in', when: 'Tue 10 Nov, 1:05 pm', method: 'Cash', lines: [mkLine('sneaker', 1, 3, 1)] }
+];
+function rbills() { return BILLS.map(function (b) { return { no: b.no, customer: b.cust ? custById(b.cust).name : 'Walk-in', when: 'Today, ' + b.time, method: billMethod(b), lines: billLines(b), shared: b }; }).concat(PAST); }
+var MANUAL = { no: 0, customer: 'No bill', when: 'Today', method: 'Cash', lines: [mkLine('tee', 0, 1, 1), mkLine('kurta', 0, 2, 1), mkLine('chappal', 0, 2, 1), mkLine('belt', null, null, 1), mkLine('socks', null, null, 1)] };
+var R_REASONS = [{ id: 'damaged', label: 'Damaged' }, { id: 'size', label: 'Wrong size' }, { id: 'mind', label: 'Changed mind' }, { id: 'other', label: 'Other' }];
+function rTotal(b) { return b.lines.reduce(function (a, l) { return a + lineTotal(l); }, 0); }
+class ReturnsBase extends React.Component<any, any> {
+  static defaultProps = DEFAULT_PROPS;
+
+constructor(props) {
+super(props);
+var demo = (props && props.demo) || 'reasons';
+if (props && props.onDone) demo = 'find';
+var st = { stage: 'find', q: '', notFound: false, bill: 0, sel: {}, to: 'original', nbPin: '', saving: false, done: null };
+if (demo === 'bill') { st.stage = 'bill'; }
+if (demo === 'reasons') { st.stage = 'bill'; st.bill = rbills().map(function (x) { return x.no; }).indexOf(1032); st.sel = { 0: { qty: 1, reason: 'size' }, 2: { qty: 1, reason: null } }; }
+if (demo === 'noBill') { st.stage = 'nobill'; }
+this.state = st; this.timers = {};
+}
+componentWillUnmount() { var t = this.timers; Object.keys(t).forEach(function (k) { clearTimeout(t[k]); }); }
+openBill(ix) { this.setState({ stage: 'bill', bill: ix, sel: {}, to: 'original', notFound: false }); }
+renderVals() {
+var RB = rbills();
+var self = this, s = this.state, p = this.props || {};
+var W = p.w || 1280, H = p.h || 800;
+var manual = s.bill === 'manual';
+var b = manual ? MANUAL : RB[s.bill] || RB[0];
+var bills = RB.map(function (bb, i) { return { no: bb.no, customer: bb.customer, when: bb.when, count: bb.lines.reduce(function (a, l) { return a + l.qty; }, 0), method: bb.method, totalN: n(bb.shared ? billTotal(bb.shared) : rTotal(bb)), countText: (function (c) { return c + (c === 1 ? ' item' : ' items'); })(bb.lines.reduce(function (a, l) { return a + l.qty; }, 0)), open: function () { self.openBill(i); } }; });
+var refund = 0, selCount = 0, missingReason = 0, damaged = false;
+var rlines = b.lines.map(function (l, i) {
+var it = findItem(l.id), sel = s.sel[i], on = !!sel;
+var qty = on ? sel.qty : 0;
+if (on) { refund += l.price * qty; selCount += qty; if (!sel.reason) missingReason++; if (sel.reason === 'damaged') damaged = true; }
+var setSel = function (patch) { var ns = Object.assign({}, self.state.sel); if (patch === null) delete ns[i]; else ns[i] = Object.assign({}, ns[i] || { qty: 1, reason: null }, patch); self.setState({ sel: ns }); };
+return { name: l.name, variant: l.variant, bought: l.qty, eachN: n(l.price), art: artFor(it, l.ci), tint: TINT[it.cat].bg,
+checked: on, checkedStr: on ? 'true' : 'false', boxBg: on ? '#2E46A0' : '#ffffff', boxBd: on ? '#2E46A0' : '#8A8276',
+border: on ? '2px solid #2E46A0' : '1px solid #E9E1D5', bg: on ? '#F8F2E9' : '#ffffff',
+multi: on && l.qty > 1, qty: qty, amtN: n(l.price * (on ? qty : l.qty)), amtFg: on ? '#162660' : '#5B6585',
+needReason: on && !sel.reason,
+toggle: function () { setSel(on ? null : {}); },
+inc: function () { setSel({ qty: Math.min(l.qty, qty + 1) }); },
+dec: function () { setSel({ qty: Math.max(1, qty - 1) }); },
+reasons: R_REASONS.map(function (r) { var ron = on && sel.reason === r.id; return { label: r.label, checked: ron ? 'true' : 'false', border: ron ? '2px solid #2E46A0' : '1px solid #D9CFC0', bg: ron ? '#EEF5FE' : '#ffffff', pick: function () { setSel({ reason: r.id }); } }; })
+};
+});
+var origLabel = b.method === 'Cash' ? 'Cash from the drawer' : 'Back to ' + b.method;
+var TOS = [
+{ id: 'original', label: origLabel, sub: b.method === 'Cash' ? 'Same way it was paid' : 'Send it back, then record it here · manual', d: b.method === 'Cash' ? ICONS.cash : (METHODS.filter(function (m) { return m.label === b.method; })[0] || METHODS[0]).d, off: manual },
+{ id: 'cash', label: 'Cash from the drawer', sub: 'Counts against this shift’s cash', d: ICONS.cash, off: b.method === 'Cash' && !manual },
+{ id: 'store', label: 'Store credit · exchange', sub: 'For another size or item · the next bill uses Rs ' + n(refund), d: ICONS.refresh, off: false },
+{ id: 'khata', label: 'Khata credit', sub: b.customer === 'Walk-in' || manual ? 'Needs a customer on the return' : 'Adds Rs ' + n(refund) + ' credit for ' + b.customer.split(' ')[0], d: ICONS.khata, off: b.customer === 'Walk-in' || manual }
+];
+var to = s.to;
+if (manual && to === 'original') to = 'cash';
+var tos = TOS.filter(function (t) { return !t.off || t.id === 'khata'; }).map(function (t) {
+var on = to === t.id && !t.off;
+return { label: t.label, sub: t.sub, d: t.d, off: t.off, checked: on ? 'true' : 'false', ring: on ? '#D0E6FD' : '#F6F0E7', border: on ? '2px solid #2E46A0' : '1px solid #D9CFC0', bg: on ? '#EEF5FE' : '#ffffff', pick: function () { self.setState({ to: t.id }); } };
+});
+var toLabel = (TOS.filter(function (t) { return t.id === to; })[0] || TOS[1]).label;
+var needAp = refund > SET.ap.refund && !s.apOk && to !== 'store';
+var why = s.saving ? 'Saving refund…' : (!selCount ? 'Tick the items coming back' : (missingReason ? 'Pick a reason for each item' : (needAp ? 'Over Rs ' + n(SET.ap.refund) + ' · needs the owner’s or manager’s OK' : '')));
+var nbOk = s.nbPin === MANAGER_PIN, nbErr = s.nbPin.length === 4 && !nbOk;
+return {
+ic: ICONS, W: W, H: H, sideW: W < 1200 ? 340 : 380,
+isFind: s.stage === 'find', isBill: s.stage === 'bill', isNoBill: s.stage === 'nobill', isDone: s.stage === 'done',
+back: function () { if (p.onBack) p.onBack(); else openBoard('AppBills'); }, backLabel: p.onBack ? 'Back to bill' : 'Bill book', headChip: manual ? 'Manual return · no bill' : 'From the original bill', showNoBill: s.stage === 'find',
+q: s.q, notFound: s.notFound, bills: bills,
+onQ: function (e) { self.setState({ q: e.target.value, notFound: false }); },
+onQKey: function (e) { if (e.key === 'Enter') self.find(); },
+find: function () { self.find(); },
+toNoBill: function () { self.setState({ stage: 'nobill', nbPin: '' }); },
+toFind: function () { self.setState({ stage: 'find', sel: {}, nbPin: '' }); },
+nbPin: s.nbPin, onNbPin: function (e) { self.setState({ nbPin: digits(e.target.value, 4) }); },
+nbBd: nbErr ? '#B42318' : (nbOk ? '#2F9E63' : '#D9CFC0'), nbShake: nbErr ? 'zshake .35s ease-out' : 'none',
+nbHint: nbErr ? 'That PIN doesn’t match a manager.' : (nbOk ? 'PIN matches · Imran Qureshi' : 'Prototype manager PIN: 1234'), nbHintFg: nbErr ? '#B42318' : (nbOk ? '#14532D' : '#5B6585'),
+nbCant: !nbOk, approveNoBill: function () { if (nbOk) self.setState({ stage: 'bill', bill: 'manual', sel: {}, to: 'cash' }); },
+manual: manual,
+bill: { title: manual ? 'Manual return' : 'Bill ' + b.no + ' · ' + b.customer, meta: manual ? 'Pick what the customer brought back · today’s prices' : b.when + ' · paid by ' + b.method + ' · Rs ' + n(rTotal(b)) },
+pickHelp: 'Tick what came back, then pick a reason for each item.',
+rlines: rlines, refundN: n(refund), selText: selCount ? selCount + (selCount === 1 ? ' item' : ' items') + ' coming back' : 'Nothing ticked yet',
+tos: tos,
+stockNote: damaged ? { bg: STATUS.warn.bg, fg: STATUS.warn.fg, d: ICONS.warn, text: 'Damaged items go to the damaged shelf, not back into stock.' } : { bg: STATUS.info.bg, fg: STATUS.info.fg, d: ICONS.box, text: 'Returned items go back into stock as soon as the refund is recorded.' },
+saving: s.saving, busyStr: s.saving ? 'true' : 'false', btnDisabled: !!why && !s.saving, why: why,
+btnLabel: s.saving ? 'Saving…' : (to === 'store' ? 'Give store credit · Rs ' + n(refund) : 'Record refund · Rs ' + n(refund)),
+record: function () {
+if (why || s.saving) return;
+self.setState({ saving: true });
+self.timers.r = setTimeout(function () {
+if (to === 'original' && b.method === 'Cash' || to === 'cash') ledgerAdd({ kind: 'out', src: 'return', amt: refund, what: 'Return · Bill ' + (b.no || 'no bill') });
+b.lines.forEach(function (l, i) { var sl = self.state.sel[i]; if (sl && sl.reason !== 'damaged') adjAdd(findItem(l.id), l.ci, l.si, sl.qty); });
+if (b.shared) b.shared.returned = (b.shared.returned || 0) + refund;
+var res = { amount: refund, method: toLabel, store: to === 'store', cn: fbrNo((b.no || 1031) + 7, '1310') + '-CN', of: b.no || '' };
+if (p.onDone) p.onDone(res); else self.setState({ saving: false, stage: 'done', done: res });
+}, 800);
+},
+needAp: needAp, apAsking: !!s.apAsking, apLabel: s.apAsking ? 'Waiting for Imran on his phone…' : 'Ask Imran to approve on his phone', askAp: function () { self.setState({ apAsking: true }); self.timers.ap = setTimeout(function () { self.setState({ apAsking: false, apOk: true }); }, 900); },
+doneText: s.done ? (s.done.store ? 'The next bill takes Rs ' + n(s.done.amount) + ' off. ' : s.done.method + ' · on this shift’s report. ') + 'Credit note ' + s.done.cn + (s.done.of ? ' against bill ' + s.done.of : '') + ' · sent to FBR.' : '', doneTitle: s.done && s.done.store ? 'Store credit given' : 'Refund recorded',
+};
+}
+find() {
+var RB = rbills();
+var q = this.state.q.replace(/\D/g, '');
+for (var i = 0; i < RB.length; i++) { if (String(RB[i].no) === q) { this.openBill(i); return; } }
+var c = CUSTOMERS.filter(function (cu) { return q.length >= 4 && cu.phone.indexOf(q) >= 0; })[0];
+if (c) { for (var j = 0; j < RB.length; j++) { if (RB[j].customer === c.name) { this.openBill(j); return; } } }
+this.setState({ notFound: true });
+}
+}
+
+rz(ReturnsBase, 1280, 800);
+
+export default class Returns extends ReturnsBase {
+  static defaultProps = DEFAULT_PROPS;
+
+  constructor(props: any) {
+    super(props);
+    if (!this.state) this.state = {};
+  }
+
+  render() {
+    const v: any = this.renderVals ? this.renderVals() : {};
+    return (
+      <>
+        <div data-nar={(v?.nar) == null || (v?.nar) === false ? undefined : (v?.nar) === true ? '' : String(v?.nar)} data-mid={(v?.mid) == null || (v?.mid) === false ? undefined : (v?.mid) === true ? '' : String(v?.mid)} data-cmp={(v?.cmp) == null || (v?.cmp) === false ? undefined : (v?.cmp) === true ? '' : String(v?.cmp)} style={dcStyle(("width:" + dcStr(v?.W) + "px;height:" + dcStr(v?.H) + "px;position:relative;overflow:hidden;display:flex;flex-direction:column;background:#F1E4D1;color:#162660;font-family:Outfit,'Segoe UI',Roboto,system-ui,sans-serif;font-size:15px"))}><header className="rz-head" style={dcStyle("height:72px;flex:none;display:flex;align-items:center;gap:14px;padding:0 24px;border-bottom:1px solid #E9E1D5;background:#ffffff")}><button className="bt" onClick={(typeof (v?.back) === 'function' ? (v?.back) : undefined) as any} style={dcStyle("height:44px;display:flex;align-items:center;gap:6px;padding:0 8px 0 4px;border:0;background:transparent;color:#2E46A0;font-size:15px;font-weight:600")}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={(v?.ic?.left) == null || (v?.ic?.left) === false ? undefined : (v?.ic?.left) === true ? '' : String(v?.ic?.left)} /></svg>{dcStr(v?.backLabel)}</button><h1 className="rz-h1" style={dcStyle("margin:0;font-family:Outfit,sans-serif;font-size:26px;font-weight:700")}>{"Return"}</h1><span style={dcStyle("height:28px;padding:0 10px;border-radius:999px;background:#F6F0E7;color:#454F70;font-size:13px;font-weight:600;display:inline-flex;align-items:center")}>{dcStr(v?.headChip)}</span>{Boolean(v?.showNoBill) ? (<><button className="bt" onClick={(typeof (v?.toNoBill) === 'function' ? (v?.toNoBill) : undefined) as any} style={dcStyle("margin-left:auto;height:44px;display:flex;align-items:center;gap:6px;padding:0 6px;border:0;background:transparent;color:#2E46A0;font-size:15px;font-weight:600")}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={(v?.ic?.key) == null || (v?.ic?.key) === false ? undefined : (v?.ic?.key) === true ? '' : String(v?.ic?.key)} /></svg>{"No bill? Manager return"}</button></>) : null}</header>{Boolean(v?.isFind) ? (<><div className="rz-stack rz-pad" style={dcStyle("flex:1;min-height:0;display:flex;gap:20px;padding:20px 24px 24px")}><section className="rz-col rz-free" aria-labelledby="find-t" style={dcStyle("flex:1;min-width:0;background:#ffffff;border:1px solid #E9E1D5;border-radius:20px;padding:20px;display:flex;flex-direction:column;gap:14px")}><h2 id="find-t" style={dcStyle("margin:0;font-family:Outfit,sans-serif;font-size:20px;font-weight:700")}>{"Find the original bill"}</h2><div style={dcStyle("display:flex;gap:10px")}><div className="field" style={dcStyle("flex:1;min-width:0;height:56px;display:flex;align-items:center;gap:10px;border:1px solid #D9CFC0;border-radius:14px;padding:0 14px")}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5B6585" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={(v?.ic?.search) == null || (v?.ic?.search) === false ? undefined : (v?.ic?.search) === true ? '' : String(v?.ic?.search)} /></svg><label htmlFor="rt-q" className="sr">{"Bill number or customer phone"}</label><input id="rt-q" className="num" autoComplete="off" value={dcStr(v?.q)} onChange={(typeof (v?.onQ) === 'function' ? (v?.onQ) : undefined) as any} onKeyDown={(typeof (v?.onQKey) === 'function' ? (v?.onQKey) : undefined) as any} placeholder="Bill number, or customer phone" style={dcStyle("flex:1;min-width:0;border:0;outline:0;background:transparent;font-size:17px")} /></div><button className="bs" onClick={(typeof (v?.find) === 'function' ? (v?.find) : undefined) as any} style={dcStyle("height:56px;padding:0 20px;border:1px solid #D9CFC0;border-radius:14px;background:#ffffff;font-size:16px;font-weight:600")}>{"Find bill"}</button></div><span style={dcStyle("display:flex;align-items:center;gap:8px;font-size:13px;color:#5B6585")}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={(v?.ic?.scan) == null || (v?.ic?.scan) === false ? undefined : (v?.ic?.scan) === true ? '' : String(v?.ic?.scan)} /></svg>{"Or scan the barcode at the bottom of the receipt."}</span>{Boolean(v?.notFound) ? (<><span style={dcStyle("font-size:13px;color:#B42318")}>{("No bill matches “" + dcStr(v?.q) + "”. Check the number on the receipt.")}</span></>) : null}<span style={dcStyle("margin-top:6px;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#5B6585")}>{"Recent bills"}</span><div style={dcStyle("display:flex;flex-direction:column;gap:8px;overflow:auto")}>{(v?.bills || []).map((b: any, $index: number) => (<React.Fragment key={$index}><button className="row" onClick={(typeof (b?.open) === 'function' ? (b?.open) : undefined) as any} style={dcStyle("min-height:68px;display:flex;align-items:center;gap:14px;padding:10px 12px;border:1px solid #F6F0E7;border-radius:14px;background:#ffffff;text-align:left")}><span style={dcStyle("width:44px;height:44px;flex:none;border-radius:999px;background:#F6F0E7;color:#162660;display:flex;align-items:center;justify-content:center")}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={(v?.ic?.receipt) == null || (v?.ic?.receipt) === false ? undefined : (v?.ic?.receipt) === true ? '' : String(v?.ic?.receipt)} /></svg></span><span style={dcStyle("flex:1;min-width:0;display:flex;flex-direction:column;gap:2px")}><span className="num" style={dcStyle("font-size:15px;font-weight:600")}>{("Bill " + dcStr(b?.no) + " · " + dcStr(b?.customer))}</span><span className="num" style={dcStyle("font-size:13px;color:#5B6585")}>{(dcStr(b?.when) + " · " + dcStr(b?.countText) + " · " + dcStr(b?.method))}</span></span><span className="num" style={dcStyle("font-size:17px;font-weight:700")}><span className="rs">{"Rs"}</span>{dcStr(b?.totalN)}</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8A8276" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={(v?.ic?.right) == null || (v?.ic?.right) === false ? undefined : (v?.ic?.right) === true ? '' : String(v?.ic?.right)} /></svg></button></React.Fragment>))}</div></section><aside className="rz-col rz-free rz-side" style={dcStyle(("width:" + dcStr(v?.sideW) + "px;flex:none;border:1px dashed #C8BCAA;border-radius:20px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:28px;text-align:center"))}><span style={dcStyle("width:96px;height:96px;border-radius:999px;background:#ECE4D8;color:#5B6585;display:flex;align-items:center;justify-content:center")}><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={(v?.ic?.ret) == null || (v?.ic?.ret) === false ? undefined : (v?.ic?.ret) === true ? '' : String(v?.ic?.ret)} /></svg></span><span style={dcStyle("font-size:17px;font-weight:600")}>{"Returns start from the bill"}</span><span style={dcStyle("font-size:15px;line-height:1.5;color:#454F70")}>{"So the refund matches what was paid, the right stock comes back, and the shift report adds up. Swapping a size? Choose store credit and the next bill uses it."}</span></aside></div></>) : null}{Boolean(v?.isNoBill) ? (<><div style={dcStyle("flex:1;display:flex;align-items:center;justify-content:center;padding:24px")}><section aria-labelledby="nb-t" style={dcStyle("width:min(520px, 100%);max-width:100%;background:#ffffff;border:1px solid #E9E1D5;border-radius:22px;padding:28px;display:flex;flex-direction:column;gap:16px")}><span style={dcStyle("width:56px;height:56px;border-radius:999px;background:#FFF3C4;color:#6B4E00;display:flex;align-items:center;justify-content:center")}><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={(v?.ic?.key) == null || (v?.ic?.key) === false ? undefined : (v?.ic?.key) === true ? '' : String(v?.ic?.key)} /></svg></span><h2 id="nb-t" style={dcStyle("margin:0;font-family:Outfit,sans-serif;font-size:20px;font-weight:700")}>{"Return without a bill needs a manager"}</h2><p style={dcStyle("margin:0;font-size:15px;line-height:1.55;color:#454F70")}>{"The refund uses today’s price and goes to cash or Khata credit. It is flagged on the shift report with the manager’s name."}</p><div className="field" style={dcStyle(("height:56px;display:flex;align-items:center;gap:10px;border:1px solid " + dcStr(v?.nbBd) + ";border-radius:14px;padding:0 14px;animation:" + dcStr(v?.nbShake)))}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5B6585" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={(v?.ic?.key) == null || (v?.ic?.key) === false ? undefined : (v?.ic?.key) === true ? '' : String(v?.ic?.key)} /></svg><label htmlFor="nb-pin" className="sr">{"Manager PIN"}</label><input id="nb-pin" type="password" inputMode="numeric" maxLength={4} autoComplete="off" value={dcStr(v?.nbPin)} onChange={(typeof (v?.onNbPin) === 'function' ? (v?.onNbPin) : undefined) as any} placeholder="Manager PIN" style={dcStyle("flex:1;min-width:0;border:0;outline:0;background:transparent;font-size:20px;letter-spacing:.3em")} /></div><span style={dcStyle(("margin-top:-8px;font-size:13px;color:" + dcStr(v?.nbHintFg)))}>{dcStr(v?.nbHint)}</span><div style={dcStyle("display:flex;gap:10px")}><button className="bs" onClick={(typeof (v?.toFind) === 'function' ? (v?.toFind) : undefined) as any} style={dcStyle("flex:1;height:56px;border:1px solid #D9CFC0;border-radius:14px;background:#ffffff;font-size:16px;font-weight:600")}>{"Find the bill instead"}</button><button className="bs" onClick={(typeof (v?.approveNoBill) === 'function' ? (v?.approveNoBill) : undefined) as any} disabled={Boolean(v?.nbCant)} style={dcStyle("flex:1;height:56px;border:1px solid #162660;border-radius:14px;background:#ffffff;color:#162660;font-size:16px;font-weight:700")}>{"Approve"}</button></div></section></div></>) : null}{Boolean(v?.isBill) ? (<><div className="rz-stack rz-pad" style={dcStyle("flex:1;min-height:0;display:flex;gap:20px;padding:20px 24px 24px")}><section className="rz-col rz-free" aria-labelledby="bill-t" style={dcStyle("flex:1;min-width:0;background:#ffffff;border:1px solid #E9E1D5;border-radius:20px;display:flex;flex-direction:column;overflow:hidden")}><div className="rz-wrap rz-wrapm" style={dcStyle("display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid #F6F0E7")}><div className="rz-w100 rz-w100m" style={dcStyle("flex:1;min-width:0")}><h2 id="bill-t" className="num" style={dcStyle("margin:0;font-family:Outfit,sans-serif;font-size:20px;font-weight:700")}>{dcStr(v?.bill?.title)}</h2><span className="num" style={dcStyle("font-size:13px;color:#5B6585")}>{dcStr(v?.bill?.meta)}</span></div>{Boolean(v?.manual) ? (<><span style={dcStyle("height:28px;padding:0 10px;border-radius:999px;background:#FFF3C4;color:#6B4E00;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px")}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={(v?.ic?.warn) == null || (v?.ic?.warn) === false ? undefined : (v?.ic?.warn) === true ? '' : String(v?.ic?.warn)} /></svg>{"Approved by Imran"}</span></>) : null}<button className="bt" onClick={(typeof (v?.toFind) === 'function' ? (v?.toFind) : undefined) as any} style={dcStyle("height:44px;padding:0 6px;border:0;background:transparent;color:#2E46A0;font-size:15px;font-weight:600")}>{"Change bill"}</button></div><div className="rz-free" style={dcStyle("flex:1;min-height:0;overflow:auto;padding:8px 20px 16px;display:flex;flex-direction:column;gap:10px")}><span style={dcStyle("padding-top:6px;font-size:13px;color:#5B6585")}>{dcStr(v?.pickHelp)}</span>{(v?.rlines || []).map((l: any, $index: number) => (<React.Fragment key={$index}><div style={dcStyle(("border:" + dcStr(l?.border) + ";border-radius:16px;background:" + dcStr(l?.bg) + ";padding:12px 14px;display:flex;flex-direction:column;gap:12px"))}><div className="rz-wrap rz-wrapm" style={dcStyle("display:flex;align-items:center;gap:12px")}><button role="checkbox" aria-checked={(l?.checkedStr) == null || (l?.checkedStr) === false ? undefined : (l?.checkedStr) === true ? '' : String(l?.checkedStr)} aria-label={("Return " + dcStr(l?.name))} onClick={(typeof (l?.toggle) === 'function' ? (l?.toggle) : undefined) as any} style={dcStyle("width:44px;height:44px;flex:none;border:0;background:transparent;display:flex;align-items:center;justify-content:center;padding:0")}><span style={dcStyle(("width:24px;height:24px;border-radius:6px;border:2px solid " + dcStr(l?.boxBd) + ";background:" + dcStr(l?.boxBg) + ";display:flex;align-items:center;justify-content:center;color:#ffffff"))}>{Boolean(l?.checked) ? (<><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={(v?.ic?.check) == null || (v?.ic?.check) === false ? undefined : (v?.ic?.check) === true ? '' : String(v?.ic?.check)} /></svg></>) : null}</span></button><span className="rz-hide" style={dcStyle(("width:48px;height:48px;flex:none;border-radius:12px;background:" + dcStr(l?.tint) + ";display:flex;align-items:center;justify-content:center"))}><svg width="40" height="40" viewBox="0 0 120 120" aria-hidden="true"><path d={(l?.art?.body) == null || (l?.art?.body) === false ? undefined : (l?.art?.body) === true ? '' : String(l?.art?.body)} fill={(l?.art?.fill) == null || (l?.art?.fill) === false ? undefined : (l?.art?.fill) === true ? '' : String(l?.art?.fill)} stroke="rgba(22,38,96,.22)" strokeWidth="2" /><path d={(l?.art?.shade) == null || (l?.art?.shade) === false ? undefined : (l?.art?.shade) === true ? '' : String(l?.art?.shade)} fill={(l?.art?.shadeCol) == null || (l?.art?.shadeCol) === false ? undefined : (l?.art?.shadeCol) === true ? '' : String(l?.art?.shadeCol)} /><path d={(l?.art?.line) == null || (l?.art?.line) === false ? undefined : (l?.art?.line) === true ? '' : String(l?.art?.line)} fill="none" stroke={(l?.art?.lineCol) == null || (l?.art?.lineCol) === false ? undefined : (l?.art?.lineCol) === true ? '' : String(l?.art?.lineCol)} strokeWidth="2.4" strokeLinecap="round" /></svg></span><span className="rz-basis rz-basism" style={dcStyle("flex:1;min-width:0;display:flex;flex-direction:column;gap:2px")}><span style={dcStyle("font-size:15px;font-weight:600")}>{dcStr(l?.name)}</span><span className="num" style={dcStyle("font-size:13px;color:#5B6585")}>{(dcStr(l?.variant) + " · bought " + dcStr(l?.bought) + " × Rs " + dcStr(l?.eachN))}</span></span>{Boolean(l?.multi) ? (<><div style={dcStyle("display:flex;align-items:center;border:1px solid #D9CFC0;border-radius:12px;overflow:hidden;background:#ffffff")}><button className="key" onClick={(typeof (l?.dec) === 'function' ? (l?.dec) : undefined) as any} aria-label="Return one fewer" style={dcStyle("width:44px;height:44px;border:0;background:#ffffff;display:flex;align-items:center;justify-content:center")}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d={(v?.ic?.minus) == null || (v?.ic?.minus) === false ? undefined : (v?.ic?.minus) === true ? '' : String(v?.ic?.minus)} /></svg></button><span className="num" style={dcStyle("width:36px;text-align:center;font-size:17px;font-weight:700")}>{dcStr(l?.qty)}</span><button className="key" onClick={(typeof (l?.inc) === 'function' ? (l?.inc) : undefined) as any} aria-label="Return one more" style={dcStyle("width:44px;height:44px;border:0;background:#ffffff;display:flex;align-items:center;justify-content:center")}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d={(v?.ic?.plus) == null || (v?.ic?.plus) === false ? undefined : (v?.ic?.plus) === true ? '' : String(v?.ic?.plus)} /></svg></button></div></>) : null}<span className="rz-push num" style={dcStyle(("width:96px;text-align:right;font-size:17px;font-weight:700;color:" + dcStr(l?.amtFg)))}><span className="rs">{"Rs"}</span>{dcStr(l?.amtN)}</span></div>{Boolean(l?.checked) ? (<><div role="radiogroup" aria-label={("Reason for returning " + dcStr(l?.name))} style={dcStyle("display:flex;flex-wrap:wrap;gap:8px;padding-left:56px;animation:zfade .15s ease-out")}>{(l?.reasons || []).map((r: any, $index: number) => (<React.Fragment key={$index}><button className="opt" role="radio" aria-checked={(r?.checked) == null || (r?.checked) === false ? undefined : (r?.checked) === true ? '' : String(r?.checked)} onClick={(typeof (r?.pick) === 'function' ? (r?.pick) : undefined) as any} style={dcStyle(("height:44px;padding:0 14px;border:" + dcStr(r?.border) + ";border-radius:999px;background:" + dcStr(r?.bg) + ";font-size:15px;font-weight:600"))}>{dcStr(r?.label)}</button></React.Fragment>))}{Boolean(l?.needReason) ? (<><span style={dcStyle("width:100%;font-size:13px;color:#6B4E00")}>{"Pick a reason · required"}</span></>) : null}</div></>) : null}</div></React.Fragment>))}</div></section><aside className="rz-col rz-free rz-side" style={dcStyle(("width:" + dcStr(v?.sideW) + "px;flex:none;display:flex;flex-direction:column;gap:14px"))}><div style={dcStyle("background:#ffffff;border:1px solid #E9E1D5;border-radius:20px;padding:18px 20px;display:flex;flex-direction:column;gap:6px")}><span style={dcStyle("font-size:13px;font-weight:600;color:#454F70")}>{"Refund due"}</span><span className="num" style={dcStyle("font-family:Outfit,sans-serif;font-size:34px;font-weight:700;letter-spacing:-.02em;line-height:1.1")}><span className="rs">{"Rs"}</span>{dcStr(v?.refundN)}</span><span className="num" style={dcStyle("font-size:13px;color:#5B6585")}>{dcStr(v?.selText)}</span></div><div style={dcStyle("background:#ffffff;border:1px solid #E9E1D5;border-radius:20px;padding:16px 20px;display:flex;flex-direction:column;gap:10px")}><span id="to-l" style={dcStyle("font-size:13px;font-weight:600;color:#454F70")}>{"Refund to"}</span><div role="radiogroup" aria-labelledby="to-l" style={dcStyle("display:flex;flex-direction:column;gap:8px")}>{(v?.tos || []).map((t: any, $index: number) => (<React.Fragment key={$index}><button className="opt" role="radio" aria-checked={(t?.checked) == null || (t?.checked) === false ? undefined : (t?.checked) === true ? '' : String(t?.checked)} onClick={(typeof (t?.pick) === 'function' ? (t?.pick) : undefined) as any} disabled={Boolean(t?.off)} style={dcStyle(("min-height:56px;display:flex;align-items:center;gap:12px;padding:8px 12px;border:" + dcStr(t?.border) + ";border-radius:14px;background:" + dcStr(t?.bg) + ";text-align:left"))}><span style={dcStyle(("width:36px;height:36px;flex:none;border-radius:999px;background:" + dcStr(t?.ring) + ";color:#162660;display:flex;align-items:center;justify-content:center"))}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={(t?.d) == null || (t?.d) === false ? undefined : (t?.d) === true ? '' : String(t?.d)} /></svg></span><span style={dcStyle("display:flex;flex-direction:column;gap:1px")}><span style={dcStyle("font-size:15px;font-weight:600")}>{dcStr(t?.label)}</span><span style={dcStyle("font-size:13px;color:#5B6585")}>{dcStr(t?.sub)}</span></span></button></React.Fragment>))}</div></div><div style={dcStyle(("border-radius:14px;background:" + dcStr(v?.stockNote?.bg) + ";color:" + dcStr(v?.stockNote?.fg) + ";padding:12px 14px;display:flex;gap:10px;font-size:13px;line-height:1.5"))}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={dcStyle("flex:none")}><path d={(v?.stockNote?.d) == null || (v?.stockNote?.d) === false ? undefined : (v?.stockNote?.d) === true ? '' : String(v?.stockNote?.d)} /></svg><span>{dcStr(v?.stockNote?.text)}</span></div><div style={dcStyle("margin-top:auto;display:flex;flex-direction:column;gap:6px")}>{Boolean(v?.needAp) ? (<><button className="bs" onClick={(typeof (v?.askAp) === 'function' ? (v?.askAp) : undefined) as any} disabled={Boolean(v?.apAsking)} style={dcStyle("height:52px;border:1px solid #D9CFC0;border-radius:14px;background:#ffffff;font-size:15px;font-weight:600")}>{dcStr(v?.apLabel)}</button></>) : null}<button className="bp" onClick={(typeof (v?.record) === 'function' ? (v?.record) : undefined) as any} disabled={Boolean(v?.btnDisabled)} aria-busy={(v?.busyStr) == null || (v?.busyStr) === false ? undefined : (v?.busyStr) === true ? '' : String(v?.busyStr)} style={dcStyle("height:64px;border:0;border-radius:16px;background:#162660;color:#FFFFFF;font-size:20px;font-weight:700;box-shadow:inset 0 -1px 0 #2E46A0;display:flex;align-items:center;justify-content:center;gap:10px")}>{Boolean(v?.saving) ? (<><span aria-hidden="true" style={dcStyle("width:22px;height:22px;border-radius:999px;border:2.5px solid rgba(22,38,96,.25);border-top-color:#162660;animation:zspin .8s linear infinite")}></span></>) : null}<span className="num">{dcStr(v?.btnLabel)}</span></button><span style={dcStyle("min-height:18px;font-size:13px;color:#5B6585;text-align:center")}>{dcStr(v?.why)}</span></div></aside></div></>) : null}{Boolean(v?.isDone) ? (<><div style={dcStyle("flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center")}><span style={dcStyle("width:88px;height:88px;border-radius:999px;background:#E8F6EE;color:#14532D;display:flex;align-items:center;justify-content:center;animation:zpop .35s ease-out")}><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={(v?.ic?.check) == null || (v?.ic?.check) === false ? undefined : (v?.ic?.check) === true ? '' : String(v?.ic?.check)} /></svg></span><span className="num" style={dcStyle("font-family:Outfit,sans-serif;font-size:26px;font-weight:700")}>{(dcStr(v?.doneTitle) + " · Rs " + dcStr(v?.refundN))}</span><span style={dcStyle("font-size:15px;color:#454F70")}>{dcStr(v?.doneText)}</span><button className="bs" onClick={(typeof (v?.toFind) === 'function' ? (v?.toFind) : undefined) as any} style={dcStyle("margin-top:8px;height:48px;padding:0 20px;border:1px solid #D9CFC0;border-radius:14px;background:#ffffff;font-size:15px;font-weight:600")}>{"Start another return"}</button></div></>) : null}</div>
+      </>
+    );
+  }
+}

@@ -1,0 +1,96 @@
+// @ts-nocheck
+'use client';
+
+import React from 'react';
+import { dcStyle, dcStr, dcLinkClick, dcHref } from '@/lib/dcRuntime';
+import {
+  ICONS,
+  POS
+} from '@/lib/common';
+
+
+const DEFAULT_PROPS: Record<string, any> = {
+  "demo": "none",
+  "who": "cashier",
+  "branch": "main",
+  "w": 1280,
+  "h": 800
+};
+
+var SLAY = {
+split: { flow: 'row', asideW: '440px', asidePad: '40px 40px 32px', clockTop: 'auto', clockFlow: 'column', clockAlign: 'flex-start', clockGap: '6px', clock: 64, cardTop: '28px', cardPad: '16px 18px', mainAlign: 'center', mainPad: '32px 64px', formW: '440px' },
+stack: { flow: 'column', asideW: '100%', asidePad: '20px 20px 18px', clockTop: '14px', clockFlow: 'row', clockAlign: 'baseline', clockGap: '12px', clock: 34, cardTop: '12px', cardPad: '12px 14px', mainAlign: 'flex-start', mainPad: '24px 20px 32px', formW: '480px' }
+};
+class SignInBase extends React.Component<any, any> {
+  static defaultProps = DEFAULT_PROPS;
+
+constructor(props) {
+super(props);
+var demo = (props && props.demo) || 'none', owner = props && props.who === 'owner';
+this.state = { email: owner ? 'hamza@yourshop.pk' : (demo === 'none' ? '' : 'ali@yourshop.pk'), pw: demo === 'error' ? 'counter12' : '', show: false, branch: (props && props.branch) || 'main', error: demo === 'error', busy: false, done: false, expired: demo === 'expired', touched: demo === 'error' };
+this.timers = {};
+}
+componentWillUnmount() { var t = this.timers; Object.keys(t).forEach(function (k) { clearTimeout(t[k]); }); }
+renderVals() {
+var self = this, s = this.state;
+var em = s.email.trim(), emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em);
+var pwOk = s.pw.length >= 4;
+var owner = (this.props || {}).who === 'owner' || em.toLowerCase() === 'hamza@yourshop.pk' || em.toLowerCase().indexOf('owner') !== -1;
+var submit = function () {
+if (s.busy) return;
+if (!emailOk || !pwOk) {
+self.setState({ touched: true, error: false });
+return;
+}
+self.setState({ busy: true, error: false, touched: true });
+self.timers.s = setTimeout(function () {
+var branchAllowed = self.state.branch === 'main' || owner;
+var ok = emailOk && pwOk && branchAllowed;
+self.setState({ busy: false, error: !ok, done: ok, pw: ok ? self.state.pw : '' });
+}, 450);
+};
+var BR = owner ? [['main', 'Main branch', 'Owner'], ['dha', 'DHA branch', 'Owner']] : [['main', 'Main branch', 'Counter 1 open'], ['dha', 'DHA branch', 'No access for you']];
+var W = +((this.props || {}).w) || 1280, H = +((this.props || {}).h) || 800;
+var isSplit = W >= 1000;
+var displayName = owner ? 'Hamza Sheikh' : (em ? em.split('@')[0].replace(/[._-]+/g, ' ').replace(/\b\w/g, function (c) { return c.toUpperCase(); }) : 'Ali Hassan');
+var displayIni = displayName.split(/\s+/).filter(Boolean).slice(0, 2).map(function (w) { return w[0].toUpperCase(); }).join('') || 'AH';
+return {
+ic: ICONS, W: W, H: H, isSplit: isSplit, rootH: isSplit ? '100dvh' : 'auto', rootOv: isSplit ? 'hidden' : 'visible', L: isSplit ? SLAY.split : SLAY.stack, expired: s.expired && !s.done, heading: s.done ? 'You’re signed in' : (s.expired ? 'Sign in again' : (owner ? 'Sign in to ' + (s.branch === 'dha' ? 'DHA branch' : 'Main branch') : 'Sign in to sell')),
+me: owner ? { ini: 'HS', name: 'Hamza Sheikh', role: 'Owner', bg: '#F1E6D6', fg: '#6B4A1E' } : { ini: displayIni, name: displayName, role: 'Cashier', bg: '#EAF2FD', fg: '#24398A' },
+homeHref: owner ? 'App.dc.html' : 'AppCashier.dc.html', homeLabel: owner && s.branch === 'dha' ? 'Continue to DHA home' : 'Continue to Home',
+sub: s.done ? (owner && s.branch === 'dha' ? 'You’re now in DHA branch. Main branch totals stay separate. (This prototype only has Main branch data.)' : 'Every sale and refund from now on is saved under your name.') : (owner ? 'Switching branch needs a fresh sign-in, so one branch’s numbers never mix with another’s.' : 'Use your own email and password. Every sale is saved under your name.'),
+signedIn: s.done, showForm: !s.done, error: s.error,
+email: s.email, onEmail: function (e) { self.setState({ email: e.target.value.slice(0, 254), error: false }); },
+emailBad: s.touched && !emailOk,
+emailErrText: !em ? 'Enter your shop email address.' : 'Enter an email like name@yourshop.pk',
+pw: s.pw, onPw: function (e) { self.setState({ pw: e.target.value.slice(0, 256), error: false }); },
+pwBad: s.touched && !pwOk,
+pwErrText: !s.pw ? 'Enter your password.' : 'Password must be at least 4 characters.',
+onPwKey: function (e) { if (e.key === 'Enter') submit(); },
+pwType: s.show ? 'text' : 'password', pwToggle: s.show ? 'Hide' : 'Show', pwShownStr: s.show ? 'true' : 'false', togglePw: function () { self.setState({ show: !self.state.show }); },
+capsHint: s.error,
+branches: BR.map(function (b) { var on = s.branch === b[0]; return { name: b[1], sub: b[2], on: on ? 'true' : 'false', border: on ? '2px solid #2E46A0' : '1px solid #D9CFC0', bg: on ? '#EEF5FE' : '#ffffff', pick: function () { self.setState({ branch: b[0], error: false }); } }; }),
+branchName: s.branch === 'main' ? 'Main branch' : 'DHA branch',
+cantSubmit: s.busy, busy: s.busy, submitLabel: s.busy ? 'Signing in…' : 'Sign in', submit: submit,
+reset: function () { self.setState({ done: false, pw: '', email: '', expired: false, touched: false, error: false }); }
+};
+}
+}
+
+export default class SignIn extends SignInBase {
+  static defaultProps = DEFAULT_PROPS;
+
+  constructor(props: any) {
+    super(props);
+    if (!this.state) this.state = {};
+  }
+
+  render() {
+    const v: any = this.renderVals ? this.renderVals() : {};
+    return (
+      <>
+        <div style={dcStyle(("width:100%;max-width:100vw;min-height:100dvh;height:" + dcStr(v?.rootH) + ";position:relative;overflow-x:hidden;overflow-y:" + dcStr(v?.rootOv) + ";display:flex;flex-direction:" + dcStr(v?.L?.flow) + ";background:#F1E4D1;color:#162660;font-family:Outfit,'Segoe UI',Roboto,system-ui,sans-serif;font-size:15px"))}><aside style={dcStyle(("width:" + dcStr(v?.L?.asideW) + ";flex:none;background:#162660;color:#ffffff;display:flex;flex-direction:column;padding:" + dcStr(v?.L?.asidePad) + ";box-sizing:border-box"))}><div style={dcStyle("display:flex;align-items:center;gap:12px")}><svg role="img" aria-label="ZYRO Retail POS" width="48" height="48" viewBox="0 0 64 64" style={dcStyle("flex:none;display:block;")}><rect width="64" height="64" rx="15" fill="#162660" /><circle cx="30" cy="35" r="16" fill="none" stroke="#FFFFFF" strokeWidth="9.5" strokeLinecap="round" strokeDasharray="76 24.5" transform="rotate(8 30 35)" /><circle cx="44.5" cy="21" r="6.6" fill="#D0E6FD" stroke="#162660" strokeWidth="1.6" /></svg><div style={dcStyle("display:flex;flex-direction:column;gap:2px")}><span style={dcStyle("font-size:17px;font-weight:700")}>{"Hamza Fashion"}</span><span style={dcStyle("font-size:13px;color:#A9BCE0")}>{"Counter 1 · ZYRO Retail POS"}</span></div></div><div style={dcStyle(("margin-top:" + dcStr(v?.L?.clockTop) + ";display:flex;flex-direction:" + dcStr(v?.L?.clockFlow) + ";align-items:" + dcStr(v?.L?.clockAlign) + ";gap:" + dcStr(v?.L?.clockGap)))}><span className="num" style={dcStyle(("font-family:Outfit,sans-serif;font-size:" + dcStr(v?.L?.clock) + "px;font-weight:700;letter-spacing:-.03em;line-height:1"))}>{"12:46"}</span><span style={dcStyle("font-size:17px;color:#BFD0EE")}>{"Saturday, 14 November"}</span></div><div style={dcStyle(("margin-top:" + dcStr(v?.L?.cardTop) + ";border-radius:16px;background:rgba(241,228,209,.08);padding:" + dcStr(v?.L?.cardPad) + ";display:flex;gap:12px;align-items:flex-start"))}><span style={dcStyle("width:40px;height:40px;flex:none;border-radius:999px;background:rgba(241,228,209,.12);display:flex;align-items:center;justify-content:center")}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={(v?.ic?.cash) == null || (v?.ic?.cash) === false ? undefined : (v?.ic?.cash) === true ? '' : String(v?.ic?.cash)} /></svg></span><span style={dcStyle("display:flex;flex-direction:column;gap:3px")}><span style={dcStyle("font-size:15px;font-weight:700")}>{"Counter 1 shift is open"}</span><span style={dcStyle("font-size:13px;line-height:1.5;color:#BFD0EE")}>{"Hamza opened it at 10:02 am. Signing in doesn’t close or change it."}</span></span></div><div style={dcStyle("margin-top:14px;display:flex;align-items:center;gap:8px;font-size:13px;color:#A9BCE0")}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7FD6A4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={(v?.ic?.cloud) == null || (v?.ic?.cloud) === false ? undefined : (v?.ic?.cloud) === true ? '' : String(v?.ic?.cloud)} /></svg><span>{"Online · signed-in sessions last 8 hours"}</span></div></aside><main style={dcStyle(("flex:1;min-width:0;min-height:0;overflow:auto;display:flex;align-items:" + dcStr(v?.L?.mainAlign) + ";justify-content:center;padding:" + dcStr(v?.L?.mainPad)))}><div style={dcStyle(("width:" + dcStr(v?.L?.formW) + ";max-width:100%;display:flex;flex-direction:column;gap:20px"))}><a href={dcHref("Account.dc.html")} onClick={dcLinkClick("Account.dc.html", undefined)} className="bt" style={dcStyle("align-self:flex-start;min-height:44px;display:inline-flex;align-items:center;gap:6px;color:#2E46A0;font-size:14px;font-weight:600;text-decoration:none")}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={(v?.ic?.back) == null || (v?.ic?.back) === false ? undefined : (v?.ic?.back) === true ? '' : String(v?.ic?.back)} /></svg>{"Back to Welcome"}</a>{Boolean(v?.expired) ? (<><div role="status" style={dcStyle("display:flex;gap:10px;border-radius:14px;background:#EAF2FD;color:#24398A;padding:12px 14px;font-size:15px;line-height:1.5")}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={dcStyle("flex:none;margin-top:2px")}><path d={(v?.ic?.clock) == null || (v?.ic?.clock) === false ? undefined : (v?.ic?.clock) === true ? '' : String(v?.ic?.clock)} /></svg><span><b>{"You were signed out after 8 hours."}</b>{" Sign in again to keep selling. Nothing on the bill or the shift was lost."}</span></div></>) : null}<div style={dcStyle("display:flex;flex-direction:column;gap:6px")}><h1 style={dcStyle("margin:0;font-family:Outfit,sans-serif;font-size:26px;font-weight:700")}>{dcStr(v?.heading)}</h1><p style={dcStyle("margin:0;font-size:15px;line-height:1.5;color:#454F70")}>{dcStr(v?.sub)}</p></div>{Boolean(v?.signedIn) ? (<><div style={dcStyle("display:flex;flex-direction:column;gap:16px;animation:zup .2s ease-out")}><div style={dcStyle("display:flex;align-items:center;gap:14px;border-radius:16px;background:#ffffff;border:1px solid #E9E1D5;padding:16px")}><span style={dcStyle(("width:52px;height:52px;flex:none;border-radius:999px;background:" + dcStr(v?.me?.bg) + ";color:" + dcStr(v?.me?.fg) + ";display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:700"))}>{dcStr(v?.me?.ini)}</span><span style={dcStyle("flex:1;display:flex;flex-direction:column;gap:2px")}><span style={dcStyle("font-size:17px;font-weight:700")}>{dcStr(v?.me?.name)}</span><span style={dcStyle("font-size:13px;color:#5B6585")}>{(dcStr(v?.me?.role) + " · " + dcStr(v?.branchName))}</span></span><span style={dcStyle("width:32px;height:32px;border-radius:999px;background:#E8F6EE;color:#14532D;display:flex;align-items:center;justify-content:center")}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={(v?.ic?.check) == null || (v?.ic?.check) === false ? undefined : (v?.ic?.check) === true ? '' : String(v?.ic?.check)} /></svg></span></div><a className="bk" href={dcHref(dcStr(v?.homeHref))} style={dcStyle("height:56px;border-radius:14px;background:#162660;color:#ffffff;text-decoration:none;font-size:17px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:8px")} onClick={dcLinkClick(dcStr(v?.homeHref), undefined)}>{dcStr(v?.homeLabel)}<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={(v?.ic?.right) == null || (v?.ic?.right) === false ? undefined : (v?.ic?.right) === true ? '' : String(v?.ic?.right)} /></svg></a><button className="bt" onClick={(typeof (v?.reset) === 'function' ? (v?.reset) : undefined) as any} style={dcStyle("align-self:center;height:44px;padding:0 8px;border:0;background:transparent;color:#2E46A0;font-size:15px;font-weight:600")}>{"Not you? Sign in as someone else"}</button></div></>) : null}{Boolean(v?.showForm) ? (<><div style={dcStyle("display:flex;flex-direction:column;gap:16px")}>{Boolean(v?.error) ? (<><div role="alert" style={dcStyle("display:flex;gap:10px;border-radius:14px;background:#FDF0EF;color:#B42318;padding:12px 14px;font-size:15px;line-height:1.5")}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={dcStyle("flex:none;margin-top:2px")}><path d={(v?.ic?.err) == null || (v?.ic?.err) === false ? undefined : (v?.ic?.err) === true ? '' : String(v?.ic?.err)} /></svg><span><b>{"That didn’t match."}</b>{" Check the email, password and branch, then try again. Only the owner can sign in to DHA branch."}</span></div></>) : null}<div style={dcStyle("display:flex;flex-direction:column;gap:6px")}><label htmlFor="si-e" style={dcStyle("font-size:13px;font-weight:600;color:#454F70")}>{"Email"}</label><div className={v?.emailBad ? "field err" : "field"} style={dcStyle("height:56px;display:flex;align-items:center;gap:10px;background:#ffffff;border:1px solid #D9CFC0;border-radius:14px;padding:0 14px")}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5B6585" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={(v?.ic?.user) == null || (v?.ic?.user) === false ? undefined : (v?.ic?.user) === true ? '' : String(v?.ic?.user)} /></svg><input id="si-e" type="email" inputMode="email" autoComplete="username" value={dcStr(v?.email)} onChange={(typeof (v?.onEmail) === 'function' ? (v?.onEmail) : undefined) as any} onKeyDown={(typeof (v?.onPwKey) === 'function' ? (v?.onPwKey) : undefined) as any} placeholder="name@yourshop.pk" style={dcStyle("flex:1;min-width:0;border:0;outline:0;background:transparent;font-size:16px")} /></div>{Boolean(v?.emailBad) ? (<><span style={dcStyle("font-size:13px;font-weight:600;color:#B42318")}>{dcStr(v?.emailErrText)}</span></>) : null}</div><div style={dcStyle("display:flex;flex-direction:column;gap:6px")}><label htmlFor="si-p" style={dcStyle("font-size:13px;font-weight:600;color:#454F70")}>{"Password"}</label><div className={v?.pwBad ? "field err" : "field"} style={dcStyle("height:56px;display:flex;align-items:center;gap:10px;background:#ffffff;border:1px solid #D9CFC0;border-radius:14px;padding:0 6px 0 14px")}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5B6585" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={(v?.ic?.lock) == null || (v?.ic?.lock) === false ? undefined : (v?.ic?.lock) === true ? '' : String(v?.ic?.lock)} /></svg><input id="si-p" type={(v?.pwType) == null || (v?.pwType) === false ? undefined : (v?.pwType) === true ? '' : String(v?.pwType)} autoComplete="current-password" value={dcStr(v?.pw)} onChange={(typeof (v?.onPw) === 'function' ? (v?.onPw) : undefined) as any} onKeyDown={(typeof (v?.onPwKey) === 'function' ? (v?.onPwKey) : undefined) as any} placeholder="Enter your password" style={dcStyle("flex:1;min-width:0;border:0;outline:0;background:transparent;font-size:16px")} /><button type="button" onClick={(typeof (v?.togglePw) === 'function' ? (v?.togglePw) : undefined) as any} aria-pressed={(v?.pwShownStr) == null || (v?.pwShownStr) === false ? undefined : (v?.pwShownStr) === true ? '' : String(v?.pwShownStr)} style={dcStyle("height:44px;padding:0 12px;border:0;border-radius:10px;background:transparent;color:#2E46A0;font-size:15px;font-weight:600")}>{dcStr(v?.pwToggle)}</button></div>{Boolean(v?.pwBad) ? (<><span style={dcStyle("font-size:13px;font-weight:600;color:#B42318")}>{dcStr(v?.pwErrText)}</span></>) : null}{Boolean(v?.capsHint) ? (<><span style={dcStyle("font-size:13px;color:#5B6585")}>{"Passwords are case-sensitive."}</span></>) : null}</div><div style={dcStyle("display:flex;flex-direction:column;gap:6px")}><span id="si-b" style={dcStyle("font-size:13px;font-weight:600;color:#454F70")}>{"Branch"}</span><div role="radiogroup" aria-labelledby="si-b" style={dcStyle("display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px")}>{(v?.branches || []).map((b: any, $index: number) => (<React.Fragment key={$index}><button type="button" className="opt" role="radio" aria-checked={(b?.on) == null || (b?.on) === false ? undefined : (b?.on) === true ? '' : String(b?.on)} onClick={(typeof (b?.pick) === 'function' ? (b?.pick) : undefined) as any} style={dcStyle(("min-height:56px;display:flex;align-items:center;gap:10px;padding:8px 14px;border:" + dcStr(b?.border) + ";border-radius:14px;background:" + dcStr(b?.bg) + ";text-align:left"))}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#162660" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={(v?.ic?.store) == null || (v?.ic?.store) === false ? undefined : (v?.ic?.store) === true ? '' : String(v?.ic?.store)} /></svg><span style={dcStyle("display:flex;flex-direction:column;gap:1px")}><span style={dcStyle("font-size:15px;font-weight:600")}>{dcStr(b?.name)}</span><span style={dcStyle("font-size:13px;color:#5B6585")}>{dcStr(b?.sub)}</span></span></button></React.Fragment>))}</div></div><button type="button" className="bk" onClick={(typeof (v?.submit) === 'function' ? (v?.submit) : undefined) as any} disabled={Boolean(v?.cantSubmit)} style={dcStyle("height:56px;margin-top:4px;border:0;border-radius:14px;background:#162660;color:#ffffff;font-size:17px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:10px")}>{Boolean(v?.busy) ? (<><span aria-hidden="true" style={dcStyle("width:20px;height:20px;border-radius:999px;border:2.5px solid rgba(255,255,255,.3);border-top-color:#ffffff;animation:zspin .8s linear infinite")}></span></>) : null}{dcStr(v?.submitLabel)}</button><div style={dcStyle("display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:space-between;font-size:13px;color:#5B6585")}><span>{"Forgot your password? Staff ask the owner. Owners "}<a href={dcHref(dcStr("AccountForgot.dc.html"))} style={dcStyle("color:#2E46A0;font-weight:600")} onClick={dcLinkClick(dcStr("AccountForgot.dc.html"), undefined)}>{"reset it by SMS"}</a>{"."}</span><a href={dcHref(dcStr("Day.dc.html"))} style={dcStyle("min-height:44px;display:inline-flex;align-items:center;color:#2E46A0;font-weight:600")} onClick={dcLinkClick(dcStr("Day.dc.html"), undefined)}>{"Sign in with your staff PIN"}</a></div></div></>) : null}</div></main></div>
+      </>
+    );
+  }
+}
