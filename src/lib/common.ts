@@ -994,8 +994,9 @@ function orbaBillDocument(s,media,copy,copies){
  var html=oi6Document(s,media,copy),thermal=media===58||media===80;
  html=html.replace('Thermal page length is a 297 mm preview preset; verify roll driver before use.', 'Select the receipt printer (not the barcode printer). Verify the driver paper width and preview before printing. '+(copies===2?'Profile requests 2 copies; select 2 copies in the print dialog.':'Select 1 copy unless you need an additional copy.'));
  if(thermal){
-   html=html.replace('</head>','<style id="orba-thermal-page">@page{size:'+media+'mm 297mm;margin:3mm}.orba-measuring main{padding:0!important;margin:0!important;width:'+(media-8)+'mm!important;max-width:'+(media-8)+'mm!important}@media print{main{margin:0 auto!important}}</style></head>');
-   html=html.replace('</body>','<script>function orbaFitReceipt(){var m=document.querySelector("main");if(!m)return;document.body.classList.add("orba-measuring");var px=m.getBoundingClientRect().height;document.body.classList.remove("orba-measuring");var mm=Math.ceil(px*25.4/96+10);if(mm>=30&&mm<=1000)document.getElementById("orba-thermal-page").textContent="@page{size:'+media+'mm "+mm+"mm;margin:3mm}";}window.addEventListener("beforeprint",orbaFitReceipt);window.addEventListener("load",orbaFitReceipt);</scr'+'ipt></body>');
+   var fitCss='.orba-measuring main{padding:0!important;margin:0!important;width:'+(media-8)+'mm!important;max-width:'+(media-8)+'mm!important}@media print{html,body{height:auto!important;margin:0!important;padding:0!important}main{margin:0 auto!important;padding:0!important}}';
+   html=html.replace('</head>','<style id="orba-thermal-page">@page{size:'+media+'mm 297mm;margin:3mm}'+fitCss+'</style></head>');
+   html=html.replace('</body>','<script>function orbaFitReceipt(){var m=document.querySelector("main");if(!m)return;document.body.classList.add("orba-measuring");var px=m.getBoundingClientRect().height;document.body.classList.remove("orba-measuring");var mm=Math.ceil(px*25.4/96+10);if(mm>=30&&mm<=1000){var st=document.getElementById("orba-thermal-page");if(st)st.textContent="@page{size:'+media+'mm "+mm+"mm;margin:3mm}'+fitCss+'";}}window.addEventListener("beforeprint",orbaFitReceipt);window.addEventListener("load",orbaFitReceipt);</scr'+'ipt></body>');
  }
  return html;
 }
@@ -1007,75 +1008,90 @@ function orbaOpenPrintDocument(html, kind, onEnd, autoClose) {
     if (onEnd) onEnd("closed");
     return { closed: true, close: function () {} };
   }
-  var existing = document.getElementById("zyro-print-dialog") as HTMLDialogElement | null;
-  if (existing) {
-    try { existing.close(); } catch (_) {}
-    existing.remove();
+  if (qs.active && !qs.active.closed) {
+    try { qs.active.close(); } catch (_) {}
   }
-  var dlg = document.createElement("dialog");
-  dlg.id = "zyro-print-dialog";
-  dlg.setAttribute("aria-labelledby", "zyro-print-title");
-  var isLabel = kind === "label";
-  var title = isLabel ? "Label sheet preview" : "Receipt document preview";
-  var sub = isLabel
-    ? "Browser simulation preview · Print via browser dialog or download the prepared HTML file."
-    : "Browser simulation preview · No local printer service connected. Print or download the HTML receipt.";
-  dlg.innerHTML =
-    "<div class=\"zyro-print-head\"><div><h2 id=\"zyro-print-title\">" + title + "</h2><p>" + sub + "</p></div>" +
-    "<button type=\"button\" id=\"zyro-print-x\" aria-label=\"Close preview\" style=\"min-width:44px;min-height:44px;border:1px solid #D9CFC0;border-radius:999px;background:#fff;font-weight:700\">✕</button></div>" +
-    "<iframe title=\"" + title + "\" sandbox=\"allow-modals allow-same-origin\"></iframe>" +
-    "<div class=\"zyro-print-foot\">" +
-    "<button type=\"button\" id=\"zyro-print-dl\">Download HTML</button>" +
-    "<button type=\"button\" id=\"zyro-print-now\" data-primary=\"true\">Print now</button>" +
-    "<button type=\"button\" id=\"zyro-print-done\">Done</button>" +
-    "</div>";
-  document.body.appendChild(dlg);
-  var frame = dlg.querySelector("iframe") as HTMLIFrameElement;
-  frame.srcdoc = html;
+  var existing = document.getElementById("zyro-print-frame");
+  if (existing) existing.remove();
+
+  var frame = document.createElement("iframe");
+  frame.id = "zyro-print-frame";
+  frame.title = kind === "label" ? "Print labels" : "Print receipt";
+  frame.setAttribute("aria-hidden", "true");
+  frame.style.cssText = "position:fixed;left:-9999px;top:0;width:800px;height:600px;border:0;visibility:hidden;pointer-events:none;";
+  document.body.appendChild(frame);
+
   var finished = false;
+  var fallbackTimer: any = null;
+  var printTimer: any = null;
   var handle: any = {
     closed: false,
     close: function () {
       if (handle.closed) return;
       handle.closed = true;
-      try { dlg.close(); } catch (_) {}
-      dlg.remove();
-      finish("closed");
+      if (printTimer !== null) { clearTimeout(printTimer); printTimer = null; }
+      if (fallbackTimer !== null) { clearTimeout(fallbackTimer); fallbackTimer = null; }
+      try { frame.remove(); } catch (_) {}
+      finish("dialog_closed");
     }
   };
   function finish(reason: string) {
     if (finished) return;
     finished = true;
     handle.closed = true;
+    if (printTimer !== null) { clearTimeout(printTimer); printTimer = null; }
+    if (fallbackTimer !== null) { clearTimeout(fallbackTimer); fallbackTimer = null; }
     if (qs.active === handle) qs.active = null;
+    try { if (autoClose !== false) frame.remove(); } catch (_) {}
     try { if (onEnd) onEnd(reason); } finally { orbaQuickFocus(); }
   }
   qs.active = handle;
-  dlg.addEventListener("close", function () {
-    handle.closed = true;
-    dlg.remove();
-    finish("closed");
-  });
-  (dlg.querySelector("#zyro-print-x") as HTMLButtonElement).onclick = function () { handle.close(); };
-  (dlg.querySelector("#zyro-print-done") as HTMLButtonElement).onclick = function () { handle.close(); };
-  (dlg.querySelector("#zyro-print-dl") as HTMLButtonElement).onclick = function () {
-    var url = URL.createObjectURL(new Blob([html], { type: "text/html;charset=utf-8" }));
-    var a = document.createElement("a");
-    a.href = url;
-    a.download = isLabel ? "zyro-labels.html" : "zyro-receipt.html";
-    a.click();
-    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
-  };
-  (dlg.querySelector("#zyro-print-now") as HTMLButtonElement).onclick = function () {
+
+  var win = frame.contentWindow;
+  var doc = frame.contentDocument || (win && win.document);
+  if (!win || !doc) {
+    handle.close();
+    throw Error(kind === "label" ? "Could not open print document. Download the prepared label file." : "Could not open print document. Use Download bill.");
+  }
+
+  var triggered = false;
+  function triggerPrint() {
+    if (triggered || handle.closed) return;
+    triggered = true;
     try {
-      frame.contentWindow?.focus();
-      frame.contentWindow?.print();
-    } catch (_) {}
-  };
+      var w: any = frame.contentWindow;
+      if (!w) { finish("window_closed"); return; }
+      if (typeof w.orbaFitReceipt === "function") {
+        w.orbaFitReceipt();
+      }
+      w.addEventListener("afterprint", function () {
+        finish("dialog_closed");
+      }, { once: true });
+      w.focus();
+      w.print();
+      fallbackTimer = setTimeout(function () {
+        finish("dialog_closed");
+      }, 60000);
+    } catch (_) {
+      finish("window_closed");
+    }
+  }
+
   try {
-    dlg.showModal();
+    doc.open();
+    doc.write(html);
+    doc.close();
+    frame.addEventListener("load", function () {
+      if (handle.closed) return;
+      if (printTimer !== null) clearTimeout(printTimer);
+      printTimer = setTimeout(triggerPrint, 80);
+    }, { once: true });
+    // Fallback in case load already fired synchronously after doc.close()
+    printTimer = setTimeout(triggerPrint, 180);
   } catch (_) {
-    dlg.setAttribute("open", "");
+    try { frame.remove(); } catch (__) {}
+    if (qs.active === handle) qs.active = null;
+    throw Error("Could not open print document. Download it instead.");
   }
   return handle;
 }

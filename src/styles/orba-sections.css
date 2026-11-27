@@ -75,72 +75,7 @@
 .zyro-sec-scope .orba-product-grid .tile{box-shadow:none!important}.zyro-sec-scope .orba-product-grid .tile:hover{box-shadow:inset 0 0 0 1px #6488BD!important}.zyro-sec-scope .orba-product-grid .tile:focus-visible{outline-offset:-3px!important}
 @media(max-width:760px){.zyro-sec-scope .df-service-heading h1{font-size:22px}.zyro-sec-scope .df-service-heading p{font-size:13px}.zyro-sec-scope .df-service-icon{width:40px;height:40px}.zyro-sec-scope .df-service-icon svg{width:22px;height:22px}.zyro-sec-scope .orba-service-workspace [aria-label="Labels and printers workspace"] button{gap:5px;padding:4px;font-size:13px}.zyro-sec-scope .orba-service-workspace [aria-label="Labels and printers workspace"] button svg{width:16px;height:16px}.zyro-sec-scope .focus-row-actions{gap:3px;padding-inline:6px!important}.zyro-sec-scope .focus-row-actions svg{width:12px;height:12px}.zyro-sec-scope .focus-add{padding-inline:10px!important}}
 
-/* --- In-app print preview dialog (replaces window.open safely) --- */
-#zyro-print-dialog {
-  width: min(760px, calc(100vw - 24px));
-  max-height: calc(100dvh - 24px);
-  padding: 0;
-  border: 1px solid #D9CFC0;
-  border-radius: 18px;
-  background: #FFFFFF;
-  color: #162660;
-  box-shadow: 0 24px 64px rgba(12, 20, 50, .3);
-  overflow: hidden;
-  font-family: Outfit, "Segoe UI", Roboto, system-ui, sans-serif;
-}
-#zyro-print-dialog::backdrop {
-  background: rgba(12, 20, 50, .48);
-}
-#zyro-print-dialog .zyro-print-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 14px 18px;
-  background: #F8F2E9;
-  border-bottom: 1px solid #E9E1D5;
-}
-#zyro-print-dialog .zyro-print-head h2 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 700;
-}
-#zyro-print-dialog .zyro-print-head p {
-  margin: 2px 0 0;
-  font-size: 12px;
-  color: #5B6585;
-}
-#zyro-print-dialog iframe {
-  display: block;
-  width: 100%;
-  height: min(62dvh, 520px);
-  border: 0;
-  background: #F6F0E7;
-}
-#zyro-print-dialog .zyro-print-foot {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 12px 18px;
-  border-top: 1px solid #E9E1D5;
-  background: #FFFFFF;
-}
-#zyro-print-dialog .zyro-print-foot button {
-  min-height: 44px;
-  padding: 0 16px;
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 700;
-  border: 1px solid #D9CFC0;
-  background: #FFFFFF;
-  color: #162660;
-}
-#zyro-print-dialog .zyro-print-foot button[data-primary="true"] {
-  background: #162660;
-  border-color: #162660;
-  color: #FFFFFF;
-}
+/* Direct hidden-iframe printing replaces intermediate preview popups */
 
 /* Keep .zyro-sec-scope fluid within App main pane */
 .zyro-sec-scope {
