@@ -145,6 +145,8 @@ const CLEAN_BOARD_HREF: Record<string, string> = {
   AppChats: '/chats',
   AppCouriers: '/couriers',
   AppPrinter: '/printer',
+  OrbaLabels: '/labels',
+  SettingsPrinter: '/printers',
   MOnboard: '/owner',
 };
 

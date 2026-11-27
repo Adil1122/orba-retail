@@ -7,8 +7,8 @@ export default function InventoryPage() {
   return (
     <ResponsiveViewport
       moduleName="App"
-      moduleProps={{ role: 'owner', page: 'stock' }}
-      title="Inventory & Stock · ZYRO Retail POS"
+      moduleProps={{ role: 'owner', page: 'stock', kit: 'shoes' }}
+      title="Stock · ZYRO Retail POS"
     />
   );
 }

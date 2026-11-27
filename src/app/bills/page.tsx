@@ -7,7 +7,7 @@ export default function BillsPage() {
   return (
     <ResponsiveViewport
       moduleName="App"
-      moduleProps={{ role: 'owner', page: 'bills' }}
+      moduleProps={{ role: 'owner', page: 'bills', kit: 'shoes' }}
       title="Bill Book · ZYRO Retail POS"
     />
   );

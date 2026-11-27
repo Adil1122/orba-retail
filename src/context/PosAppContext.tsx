@@ -81,6 +81,8 @@ const BOARD_TO_CLEAN_PATH: Record<string, string> = {
   AppChats: '/chats',
   AppCouriers: '/couriers',
   AppPrinter: '/printer',
+  OrbaLabels: '/labels',
+  SettingsPrinter: '/printers',
   MOnboard: '/owner',
 };
 
