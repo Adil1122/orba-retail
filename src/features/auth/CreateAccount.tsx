@@ -14,6 +14,7 @@ import {
   phoneOk
 } from '@/lib/common';
 import App from '@/components/dashboard/App';
+import { authApi } from '@/lib/authApi';
 
 const DEFAULT_PROPS: Record<string, any> = {
   "step": "welcome",
@@ -182,11 +183,14 @@ this.state = {
 step: step, lang: p.lang || 'en', kit: p.kit || 'shoes', demo: demo,
 phone: fill || past('phone') ? (demo === 'taken' ? '3001234567' : '3214567890') : '', agree: fill, code: (step === 'code' || step === 'joinCode' || step === 'reset') ? (demo === 'codeError' ? WRONG_CODE : (fill ? '482913' : '')) : '',
 codeBad: demo === 'codeError', name: fill ? (f === 'join' ? 'Ali Hassan' : 'Hamza Sheikh') : '', email: fill && f === 'create' ? 'hamza@yourshop.pk' : '',
-pw: fill ? (demo === 'weak' ? 'hamza' : 'Stride2026') : '', pwShown: demo === 'weak', user: fill ? '0321 4567890' : '', keep: false, signBad: demo === 'wrongPassword',
+pw: fill ? (demo === 'weak' ? 'hamza' : 'Stride2026') : '', pwConfirm: fill ? (demo === 'weak' ? 'hamza' : 'Stride2026') : '', pwShown: demo === 'weak', user: fill ? '0321 4567890' : '', keep: false, signBad: demo === 'wrongPassword', signErrMsg: null,
 shop: fill ? 'Stride Footwear' : '', city: 'Lahore', cityName: '', area: fill ? 'Liberty Market, Gulberg' : '', br: 1, logo: fill && step !== 'shop',
 pin: demo === 'pinMismatch' ? '7391' : (fill && step === 'joinPin' ? '7391' : ''), pin2: demo === 'pinMismatch' ? '7319' : (fill && step === 'joinPin' ? '7391' : ''),
 taken: demo === 'taken', noInvite: demo === 'noInvite', built: step === 'building' ? 3 : 0, busy: false, toast: null,
-tried: false, resendSec: 0
+tried: false, resendSec: 0,
+devOtp: null, demoNotice: null, copiedOtp: false,
+verificationToken: null, resetToken: null, resetOtpVerified: false,
+codeErrMsg: null, forgotNotice: null, serverErr: null
 };
 this.timers = [];
 this.resendIv = null;
@@ -209,10 +213,11 @@ componentWillUnmount() {
 }
 later(fn, ms) { this.timers.push(setTimeout(fn, ms)); }
 toast(msg) { var self = this; this.setState({ toast: msg }); this.later(function () { self.setState({ toast: null }); }, 2600); }
-startResendCooldown() {
+startResendCooldown(seconds) {
   var self = this;
+  var dur = Number(seconds) > 0 ? Math.min(120, Math.round(Number(seconds))) : 30;
   if (this.resendIv) clearInterval(this.resendIv);
-  this.setState({ resendSec: 30 });
+  this.setState({ resendSec: dur });
   this.resendIv = setInterval(function () {
     self.setState(function (prev) {
       if (prev.resendSec <= 1) {
@@ -224,7 +229,7 @@ startResendCooldown() {
   }, 1000);
 }
 go(step, syncRoute) {
-  this.setState({ step: step, taken: false, noInvite: false, signBad: false, codeBad: false, busy: false, tried: false });
+  this.setState({ step: step, taken: false, noInvite: false, signBad: false, signErrMsg: null, codeBad: false, codeErrMsg: null, serverErr: null, busy: false, tried: false });
   if (syncRoute && typeof window !== 'undefined') {
     var curPath = window.location.pathname;
     var onCleanAuthRoute = curPath === '/' || curPath === '/login' || curPath === '/register' || curPath === '/join';
@@ -252,8 +257,9 @@ var kitName = kn[li], type0 = ((SHOPCATS[kit] || [])[0] || [])[2] || 'simple', u
 var cityShown = s.city === 'Other' ? ((s.cityName || '').trim() || '—') : s.city;
 var shopName = (s.shop || '').trim() || 'Stride Footwear', first = (s.name || 'Ali Hassan').split(' ')[0];
 // password rules
-var pw = s.pw || '', r1 = pw.length >= 8, r2 = /\d/.test(pw), r3 = !digits10 || pw.replace(/\D/g, '').indexOf(digits10) < 0;
+var pw = s.pw || '', pwConfirm = s.pwConfirm || '', r1 = pw.length >= 8, r2 = /\d/.test(pw), r3 = !digits10 || pw.replace(/\D/g, '').indexOf(digits10) < 0;
 var pwOk = r1 && r2 && r3;
+var pwConfirmMatch = pw.length > 0 && pwConfirm === pw;
 var rule = function (ok, txt) { return { t: txt, fg: ok ? '#14532D' : '#5B6585', d: ok ? ICONS.checkCircle : 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z', sr: ok ? t.met : t.notMet }; };
 var codeOk = /^\d{6}$/.test(s.code || ''), pinEasy = s.pin.length === 4 && (['1234', '0000', '1111', '2222', '4321', '1990', '2000'].indexOf(s.pin) >= 0 || /^(\d)\1{3}$/.test(s.pin || ''));
 var pinMatch = s.pin.length === 4 && s.pin2.length === 4 && s.pin === s.pin2;
@@ -288,32 +294,138 @@ var choices = [
 ].map(function (c) { return { t: c[0], s: c[1], d: c[2], go: c[3], cls: c[4] ? 'bk' : 'opt', bg: c[4] ? '#162660' : '#ffffff', fg: c[4] ? '#ffffff' : '#162660', bd: c[4] ? '0' : '1px solid #E9E1D5', subFg: c[4] ? '#BFD0EE' : '#5B6585', icBg: c[4] ? 'rgba(255,255,255,.12)' : '#F6F0E7', icFg: c[4] ? '#ffffff' : '#162660' }; });
 var LANGS = [['en', 'English', 'Outfit,sans-serif', 15], ['roman', 'Roman Urdu', 'Outfit,sans-serif', 15], ['ur', 'اردو', "'Noto Naskh Arabic',serif", 17]];
 var langs = LANGS.map(function (l) { var on = lang === l[0]; return { code: l[0] === 'ur' ? 'ur' : 'en', label: l[1], font: l[2], size: l[3], on: on ? 'true' : 'false', bg: on ? '#ffffff' : 'transparent', fg: on ? '#162660' : '#454F70', sh: on ? '0 1px 2px rgba(22,30,60,.08)' : 'none', pick: function () { self.setState({ lang: l[0] }); if (P.onLangChange) P.onLangChange(l[0]); } }; });
-// next button per step with active validation feedback
+// next button per step with live backend API integration
 var why = '', nextLabel = t.nextB, next = function () {}, nextIsLink = false, nextHref = '', secHas = false, secLabel = '', secHref = '';
 var onCodeStep = step === 'code' || step === 'joinCode' || step === 'reset';
-var busyThen = function (fn) { self.setState({ busy: true }); self.later(function () { self.setState({ busy: false }); fn(); }, 450); };
+var roleHomePath = function (u) {
+  if (!u || !u.role) return '/owner';
+  if (u.role === 'cashier') return '/cashier';
+  if (u.role === 'inventory') return '/stock';
+  return '/owner';
+};
+var verifyResetOtpNow = async function () {
+  if (s.busy) return null;
+  if (!codeOk) { self.setState({ tried: true }); self.toast(t.why_code); return null; }
+  self.setState({ busy: true, codeBad: false, codeErrMsg: null, serverErr: null });
+  var res = await authApi.verifyForgotPasswordOtp(s.phone, s.code);
+  if (!res.ok) {
+    var errMsg = res.error?.message || t.codeErr;
+    self.setState({ busy: false, codeBad: true, codeErrMsg: errMsg, resetToken: null, resetOtpVerified: false });
+    self.toast(errMsg);
+    return null;
+  }
+  var tok = res.data?.resetToken || res.data?.verificationToken || null;
+  self.setState({ busy: false, codeBad: false, codeErrMsg: null, resetToken: tok, resetOtpVerified: true });
+  self.toast('Code verified. Now enter your new password.');
+  return tok;
+};
 if (step === 'phone' || step === 'forgot' || step === 'join') {
 why = !phoneOk ? t.why_phone : (step === 'phone' && !s.agree ? t.why_agree : '');
 nextLabel = t.sendCode;
-next = function () {
-if (why) { self.setState({ tried: true }); self.toast(why); return; }
-if (step === 'phone' && (s.taken || digits10 === '3001234567')) { self.setState({ taken: true }); return; }
-if (step === 'join' && (s.noInvite || digits10 === '3009998887')) { self.setState({ noInvite: true }); return; }
-busyThen(function () {
-  self.setState({ step: step === 'phone' ? 'code' : (step === 'forgot' ? 'reset' : 'joinCode'), code: '', codeBad: false, tried: false });
-  self.startResendCooldown();
-  self.toast('Verification code sent to ' + phoneShow + ' (demo: any 6 digits)');
-});
+next = async function () {
+  if (s.busy) return;
+  if (why) { self.setState({ tried: true }); self.toast(why); return; }
+  if (step === 'phone') {
+    self.setState({ busy: true, taken: false, serverErr: null });
+    var res = await authApi.sendRegisterOtp(s.phone);
+    if (!res.ok) {
+      if (res.status === 409 || res.error?.code === 'PHONE_ALREADY_REGISTERED') {
+        self.setState({ busy: false, taken: true });
+        return;
+      }
+      var errMsg = res.error?.message || 'Could not send verification code.';
+      self.setState({ busy: false, serverErr: errMsg });
+      self.toast(errMsg);
+      return;
+    }
+    self.setState({
+      busy: false,
+      step: 'code',
+      code: '',
+      codeBad: false,
+      codeErrMsg: null,
+      verificationToken: null,
+      devOtp: res.data?.devOtp || null,
+      demoNotice: res.data?.demoNotice || null,
+      copiedOtp: false,
+      tried: false,
+      serverErr: null
+    });
+    self.startResendCooldown(res.data?.resendAfterSeconds || 30);
+    self.toast(res.data?.devOtp ? ('Verification code generated for ' + phoneShow) : ('Verification code sent to ' + phoneShow));
+    return;
+  }
+  if (step === 'forgot') {
+    self.setState({ busy: true, serverErr: null });
+    var fres = await authApi.forgotPassword(s.phone);
+    if (!fres.ok) {
+      var ferr = fres.error?.message || 'Could not start password reset.';
+      self.setState({ busy: false, serverErr: ferr });
+      self.toast(ferr);
+      return;
+    }
+    var fMsg = fres.data?.message || 'If an account is registered with this mobile number, a 6-digit verification code has been generated.';
+    self.setState({
+      busy: false,
+      step: 'reset',
+      code: '',
+      pw: '',
+      pwConfirm: '',
+      codeBad: false,
+      codeErrMsg: null,
+      resetToken: null,
+      resetOtpVerified: false,
+      devOtp: fres.data?.devOtp || null,
+      demoNotice: fres.data?.demoNotice || null,
+      forgotNotice: fMsg,
+      copiedOtp: false,
+      tried: false,
+      serverErr: null
+    });
+    self.startResendCooldown(fres.data?.resendAfterSeconds || 30);
+    self.toast(fMsg);
+    return;
+  }
+  // Staff join flow preserved
+  if (step === 'join' && (s.noInvite || digits10 === '3009998887')) { self.setState({ noInvite: true }); return; }
+  self.setState({ busy: true });
+  self.later(function () {
+    self.setState({ busy: false, step: 'joinCode', code: '', codeBad: false, tried: false });
+    self.startResendCooldown(30);
+  }, 350);
 };
 } else if (step === 'code' || step === 'joinCode') {
 why = !codeOk ? t.why_code : ''; nextLabel = t.checkCode;
-next = function () {
+next = async function () {
+  if (s.busy) return;
   if (!codeOk) { self.setState({ tried: true }); self.toast(t.why_code); return; }
+  if (step === 'code') {
+    self.setState({ busy: true, codeBad: false, codeErrMsg: null, serverErr: null });
+    var vres = await authApi.verifyRegisterOtp(s.phone, s.code);
+    if (!vres.ok) {
+      var verr = vres.error?.message || t.codeErr;
+      self.setState({ busy: false, codeBad: true, codeErrMsg: verr });
+      self.toast(verr);
+      return;
+    }
+    self.setState({
+      busy: false,
+      codeBad: false,
+      codeErrMsg: null,
+      verificationToken: vres.data?.verificationToken || null,
+      devOtp: null,
+      demoNotice: null,
+      step: 'you',
+      tried: false
+    });
+    self.toast('Phone number verified');
+    return;
+  }
   if (s.code === WRONG_CODE) { self.setState({ codeBad: true }); return; }
-  busyThen(function () { self.go(step === 'code' ? 'you' : 'joinPin'); });
+  self.go('joinPin');
 };
 } else if (step === 'you') {
-why = !(s.name || '').trim() ? t.why_name : (emailBad ? 'Enter a valid email address or leave it blank' : (!pwOk ? t.why_pw : ''));
+why = !(s.name || '').trim() ? t.why_name : (emailBad ? 'Enter a valid email address or leave it blank' : (!pwOk ? t.why_pw : (!pwConfirmMatch ? 'Passwords do not match' : '')));
 next = function () {
   if (why) { self.setState({ tried: true }); self.toast(why); return; }
   self.go('shop');
@@ -326,31 +438,133 @@ next = function () {
 };
 } else if (step === 'kind') {
 nextLabel = t.createB;
-next = function () {
-if (P.onKitChange) P.onKitChange(s.kit);
-self.setState({ step: 'building', built: 0, tried: false });
-[1, 2, 3, 4, 5].forEach(function (k) { self.later(function () { self.setState({ built: k }); }, k * 360); });
-self.later(function () { self.setState({ step: 'ready' }); self.toast(shopName + ' account created'); }, 5 * 360 + 450);
+next = async function () {
+  if (s.busy) return;
+  if (!s.verificationToken) {
+    self.toast('Please verify your phone number first.');
+    self.go('phone');
+    return;
+  }
+  if (P.onKitChange) P.onKitChange(s.kit);
+  self.setState({ step: 'building', built: 1, busy: true, tried: false, serverErr: null });
+  var stepTimer1 = setTimeout(function () { self.setState(function (prev) { return prev.step === 'building' ? { built: Math.max(prev.built, 2) } : null; }); }, 350);
+  var stepTimer2 = setTimeout(function () { self.setState(function (prev) { return prev.step === 'building' ? { built: Math.max(prev.built, 3) } : null; }); }, 700);
+  self.timers.push(stepTimer1, stepTimer2);
+
+  var regRes = await authApi.register({
+    phone: s.phone,
+    verificationToken: s.verificationToken,
+    fullName: (s.name || '').trim(),
+    email: (s.email || '').trim() || undefined,
+    password: s.pw,
+    confirmPassword: s.pwConfirm,
+    shopName: (s.shop || '').trim(),
+    city: cityShown,
+    area: (s.area || '').trim() || undefined,
+    branchCount: String(s.br || 1),
+    shopKit: s.kit
+  });
+
+  if (!regRes.ok) {
+    var regErr = regRes.error?.message || 'Could not create your account. Please try again.';
+    var tokenProblem = /VERIFICATION|TOKEN/i.test(regRes.error?.code || '');
+    self.setState({
+      busy: false,
+      step: tokenProblem ? 'phone' : 'kind',
+      verificationToken: tokenProblem ? null : s.verificationToken,
+      serverErr: regErr
+    });
+    self.toast(regErr);
+    return;
+  }
+
+  self.setState({ built: 5 });
+  if (typeof P.onAuthSuccess === 'function') {
+    try { await P.onAuthSuccess(); } catch {}
+  }
+  self.later(function () {
+    self.setState({ step: 'ready', busy: false, verificationToken: null });
+    self.toast(shopName + ' account created');
+  }, 450);
 };
 } else if (step === 'ready') {
 nextIsLink = true; nextLabel = t.counterB; nextHref = 'SetupDevice.dc.html'; secHas = true; secLabel = t.homeB; secHref = (kit === 'shoes' ? 'AppHomeShoes' : 'App') + '.dc.html';
 } else if (step === 'signin') {
 why = !userTrim ? 'Enter your mobile number or email' : (!userValid ? 'Enter a valid mobile number (03xx...) or email' : (!pw ? 'Enter your password' : (pw.length < 4 ? 'Password must be at least 4 characters' : '')));
 nextLabel = t.signinB;
-next = function () {
+next = async function () {
+  if (s.busy) return;
   if (why) { self.setState({ tried: true }); self.toast(why); return; }
-  if (s.demo === 'wrongPassword' && s.signBad !== 'cleared') { self.setState({ signBad: true }); return; }
-  self.setState({ busy: true });
+  self.setState({ busy: true, signBad: false, signErrMsg: null, serverErr: null });
+  var loginRes = await authApi.login({
+    identifier: userTrim,
+    password: s.pw,
+    keepSignedIn: Boolean(s.keep)
+  });
+  if (!loginRes.ok) {
+    var lErr = loginRes.error?.message || t.signErr;
+    self.setState({ busy: false, signBad: true, signErrMsg: lErr });
+    return;
+  }
+  var authedUser = loginRes.data?.user || null;
+  if (typeof P.onAuthSuccess === 'function') {
+    try {
+      var hydrated = await P.onAuthSuccess();
+      if (hydrated) authedUser = hydrated;
+    } catch {}
+  }
+  self.setState({ busy: false, signBad: false, signErrMsg: null });
   self.toast(t.signedToast);
-  self.later(function () { self.setState({ busy: false }); openBoard(kit === 'shoes' ? 'AppHomeShoes' : 'App'); }, 700);
+  openBoard(roleHomePath(authedUser));
 };
 } else if (step === 'reset') {
-why = !codeOk ? t.why_code : (!pwOk ? t.why_pw : ''); nextLabel = t.savePwB;
-next = function () {
+why = !s.resetOtpVerified && !codeOk ? t.why_code : (!pwOk ? t.why_pw : (!pwConfirmMatch ? 'Passwords do not match' : '')); nextLabel = t.savePwB;
+next = async function () {
+  if (s.busy) return;
   if (why) { self.setState({ tried: true }); self.toast(why); return; }
-  if (s.code === WRONG_CODE) { self.setState({ codeBad: true }); return; }
-  self.toast(t.signedToast);
-  self.later(function () { openBoard(kit === 'shoes' ? 'AppHomeShoes' : 'App'); }, 700);
+  var tokenToUse = s.resetToken;
+  if (!tokenToUse) {
+    tokenToUse = await verifyResetOtpNow();
+    if (!tokenToUse) return;
+  }
+  self.setState({ busy: true, serverErr: null });
+  var resetRes = await authApi.resetPassword({
+    phone: s.phone,
+    resetToken: tokenToUse,
+    newPassword: s.pw,
+    confirmPassword: s.pwConfirm
+  });
+  if (!resetRes.ok) {
+    var rErr = resetRes.error?.message || 'Could not reset password. Please try again.';
+    var tokenBad = /TOKEN|VERIFICATION/i.test(resetRes.error?.code || '');
+    self.setState({
+      busy: false,
+      serverErr: rErr,
+      resetToken: tokenBad ? null : s.resetToken,
+      resetOtpVerified: tokenBad ? false : s.resetOtpVerified
+    });
+    self.toast(rErr);
+    return;
+  }
+  self.setState({
+    busy: false,
+    step: 'signin',
+    user: s.phone,
+    pw: '',
+    pwConfirm: '',
+    code: '',
+    devOtp: null,
+    demoNotice: null,
+    forgotNotice: null,
+    resetToken: null,
+    resetOtpVerified: false,
+    serverErr: null,
+    tried: false
+  });
+  self.toast(resetRes.data?.message || 'Password updated. Please sign in.');
+  if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+    openBoard('/login');
+  }
 };
 } else if (step === 'joinPin') {
 why = s.pin.length < 4 || s.pin2.length < 4 || pinEasy || !pinMatch ? (pinEasy ? t.pinEasy : (s.pin2.length === 4 && !pinMatch ? t.pinMismatch : t.why_pin)) : '';
@@ -389,11 +603,51 @@ var phBad = (step === 'phone' && s.taken) || (step === 'join' && s.noInvite) || 
 var bw = W < 1180 ? Math.max(360, Math.round(W * 0.4)) : Math.min(600, Math.round(W * 0.44)), fs = bw >= 560 ? 0.4 : (bw >= 440 ? 0.3 : 0.24);
 var railW = W < 1180 ? 300 : 360;
 var resendLabel = s.resendSec > 0 ? ('Send again in 0:' + (s.resendSec < 10 ? '0' : '') + s.resendSec) : 'Send code again';
-var doResend = function () {
-  if (s.resendSec > 0) return;
-  self.startResendCooldown();
+var doResend = async function () {
+  if (s.resendSec > 0 || s.busy) return;
+  if (step === 'code') {
+    self.setState({ busy: true, codeBad: false, codeErrMsg: null, serverErr: null });
+    var r1 = await authApi.sendRegisterOtp(s.phone);
+    if (!r1.ok) {
+      var m1 = r1.error?.message || 'Could not resend code.';
+      self.setState({ busy: false, serverErr: m1 });
+      self.toast(m1);
+      return;
+    }
+    self.setState({ busy: false, code: '', devOtp: r1.data?.devOtp || null, demoNotice: r1.data?.demoNotice || null, copiedOtp: false });
+    self.startResendCooldown(r1.data?.resendAfterSeconds || 30);
+    self.toast('New 6-digit code generated');
+    return;
+  }
+  if (step === 'reset') {
+    self.setState({ busy: true, codeBad: false, codeErrMsg: null, resetToken: null, resetOtpVerified: false, serverErr: null });
+    var r2 = await authApi.forgotPassword(s.phone);
+    if (!r2.ok) {
+      var m2 = r2.error?.message || 'Could not resend code.';
+      self.setState({ busy: false, serverErr: m2 });
+      self.toast(m2);
+      return;
+    }
+    self.setState({ busy: false, code: '', devOtp: r2.data?.devOtp || null, demoNotice: r2.data?.demoNotice || null, copiedOtp: false });
+    self.startResendCooldown(r2.data?.resendAfterSeconds || 30);
+    self.toast('New 6-digit code generated');
+    return;
+  }
+  self.startResendCooldown(30);
   self.toast('New 6-digit code sent to ' + (digits10 ? phoneShow : '+92 321 4567890'));
 };
+var copyDevOtp = function () {
+  if (!s.devOtp) return;
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(String(s.devOtp));
+    }
+  } catch {}
+  self.setState({ copiedOtp: true });
+  self.toast('Code copied: ' + s.devOtp);
+  self.later(function () { self.setState({ copiedOtp: false }); }, 2000);
+};
+var pwConfirmBad = (step === 'you' || step === 'reset') && ((s.pwConfirm && s.pwConfirm !== s.pw) || (s.tried && !pwConfirmMatch));
 return {
 brandW: bw, railW: railW, brandPad: bw >= 520 ? '40px 44px 36px' : '28px 28px 24px', brandGap: H < 720 ? 16 : 22, figDisp: H < 720 ? 'none' : 'flex', figW: Math.round(1280 * fs), figH: Math.round(800 * fs), figS: fs,
 rootH: phone ? 'min-height:100dvh;height:auto' : ('height:' + Math.max(600, H) + 'px;overflow:hidden'),
@@ -405,22 +659,29 @@ railTitle: railTitle, railSub: railSub, steps: steps, hasRailAlt: flow !== 'welc
 stepOf: list.length ? fill(t.stepOf, { n: stepNo, m: stepMax }) : '', stepNo: stepNo, stepMax: Math.max(1, stepMax), pct: list.length ? Math.round(stepNo / Math.max(1, stepMax) * 100) : 100, hasStepOf: !welcome && !phone && list.length > 0, railNote: flow === 'signin', railNoteText: t.signinNote,
 title: title, sub: sub, hasSub: !!sub,
 showPhone: step === 'phone' || step === 'forgot' || step === 'join', showAgree: step === 'phone', showTaken: step === 'phone' && !!s.taken, showNoInvite: step === 'join' && !!s.noInvite,
+showServerErr: !!s.serverErr, serverErr: s.serverErr || '',
 phBd: phBad ? '2px solid #B42318' : '1px solid #8A8276', phInvalid: phBad ? 'true' : 'false', phoneHelp: phBad && !s.taken && !s.noInvite ? t.why_phone : t.ph_help, phoneHelpFg: phBad && !s.taken && !s.noInvite ? '#B42318' : '#5B6585',
-onPhone: function (e) { self.setState({ phone: (e.target.value || '').replace(/[^\d +\-]/g, '').slice(0, 15), taken: false, noInvite: false, tried: false }); },
+onPhone: function (e) { self.setState({ phone: (e.target.value || '').replace(/[^\d +\-]/g, '').slice(0, 15), taken: false, noInvite: false, serverErr: null, tried: false }); },
 toggleAgree: function () { self.setState({ agree: !self.state.agree, tried: false }); }, readTerms: function () { self.toast(t.termsToast); }, goSignin: function () { self.go('signin', true); },
 showCode: onCodeStep, phoneShow: digits10 ? phoneShow : '+92 321 4567890', changeNumber: function () { self.go(step === 'reset' ? 'forgot' : (step === 'joinCode' ? 'join' : 'phone')); },
-onCode: function (e) { self.setState({ code: (e.target.value || '').replace(/\D/g, '').slice(0, 6), codeBad: false, tried: false }); },
-codeBd: codeBad ? '2px solid #B42318' : '1px solid #8A8276', codeInvalid: codeBad ? 'true' : 'false', codeHelp: s.codeBad ? t.codeErr : (codeBad ? t.why_code : t.codeHelp), codeHelpFg: codeBad ? '#B42318' : '#5B6585', codeRole: codeBad ? 'alert' : 'note',
-resendLabel: resendLabel, resendOff: s.resendSec > 0, doResend: doResend,
+onCode: function (e) { self.setState({ code: (e.target.value || '').replace(/\D/g, '').slice(0, 6), codeBad: false, codeErrMsg: null, resetToken: null, resetOtpVerified: false, tried: false }); },
+codeBd: codeBad ? '2px solid #B42318' : (s.resetOtpVerified && step === 'reset' ? '2px solid #2F9E63' : '1px solid #8A8276'), codeInvalid: codeBad ? 'true' : 'false', codeHelp: s.codeErrMsg || (s.codeBad ? t.codeErr : (s.resetOtpVerified && step === 'reset' ? 'Code verified. Set your new password below.' : (codeBad ? t.why_code : t.codeHelp))), codeHelpFg: codeBad ? '#B42318' : (s.resetOtpVerified && step === 'reset' ? '#14532D' : '#5B6585'), codeRole: codeBad ? 'alert' : 'note',
+resendLabel: resendLabel, resendOff: s.resendSec > 0 || s.busy, doResend: doResend,
+showDevOtp: onCodeStep && !!s.devOtp, devOtp: s.devOtp || '', demoNotice: s.demoNotice || 'Temporary dev/testing OTP (SMS delivery not connected yet):', copiedOtp: !!s.copiedOtp, copyDevOtp: copyDevOtp,
+showForgotNotice: step === 'reset' && !!s.forgotNotice, forgotNotice: s.forgotNotice || '',
+isResetStep: step === 'reset', resetOtpVerified: !!s.resetOtpVerified, verifyResetOtpNow: verifyResetOtpNow, canVerifyResetOtp: step === 'reset' && codeOk && !s.resetOtpVerified && !s.busy,
 isYou: step === 'you', onName: function (e) { self.setState({ name: e.target.value, tried: false }); }, onEmail: function (e) { self.setState({ email: e.target.value, tried: false }); },
 nameBd: s.tried && step === 'you' && !(s.name || '').trim() ? '2px solid #B42318' : '1px solid #8A8276',
 emailBd: s.tried && step === 'you' && emailBad ? '2px solid #B42318' : '1px solid #8A8276',
-showPw: step === 'you' || step === 'signin' || step === 'reset', isSignin: step === 'signin', showRules: step !== 'signin',
-pwLabel: step === 'reset' ? t.l_newpw : t.l_pw, pwType: s.pwShown ? 'text' : 'password', pwAuto: step === 'signin' ? 'current-password' : 'new-password', pwShown: s.pwShown ? 'true' : 'false', pwToggle: s.pwShown ? t.hide : t.show,
-togglePw: function () { self.setState({ pwShown: !self.state.pwShown }); }, onPw: function (e) { self.setState({ pw: e.target.value, signBad: self.state.signBad ? 'cleared' : false, tried: false }); },
+showPw: step === 'you' || step === 'signin' || step === 'reset', isSignin: step === 'signin', showRules: step !== 'signin', showPwConfirm: step === 'you' || step === 'reset',
+pwLabel: step === 'reset' ? t.l_newpw : t.l_pw, pwConfirmLabel: step === 'reset' ? 'Confirm new password' : 'Confirm password',
+pwType: s.pwShown ? 'text' : 'password', pwAuto: step === 'signin' ? 'current-password' : 'new-password', pwShown: s.pwShown ? 'true' : 'false', pwToggle: s.pwShown ? t.hide : t.show,
+togglePw: function () { self.setState({ pwShown: !self.state.pwShown }); }, onPw: function (e) { self.setState({ pw: e.target.value, signBad: self.state.signBad ? 'cleared' : false, signErrMsg: null, tried: false }); },
+onPwConfirm: function (e) { self.setState({ pwConfirm: e.target.value, tried: false }); },
 pwBd: (step === 'signin' && (s.signBad === true || (s.tried && (!pw || pw.length < 4)))) || ((step === 'you' || step === 'reset') && ((s.demo === 'weak' && !pwOk) || (s.tried && !pwOk))) ? '2px solid #B42318' : '1px solid #8A8276',
-rules: [rule(r1, t.r1), rule(r2, t.r2), rule(r3, t.r3)], onUser: function (e) { self.setState({ user: e.target.value, signBad: self.state.signBad ? 'cleared' : false, tried: false }); },
-userBd: step === 'signin' && (s.signBad === true || (s.tried && (!userTrim || !userValid))) ? '2px solid #B42318' : '1px solid #8A8276', toggleKeep: function () { self.setState({ keep: !self.state.keep }); }, showSignErr: s.signBad === true, goForgot: function () { self.go('forgot'); },
+pwConfirmBd: pwConfirmBad ? '2px solid #B42318' : '1px solid #8A8276', pwConfirmBad: pwConfirmBad,
+rules: [rule(r1, t.r1), rule(r2, t.r2), rule(r3, t.r3)], onUser: function (e) { self.setState({ user: e.target.value, signBad: self.state.signBad ? 'cleared' : false, signErrMsg: null, tried: false }); },
+userBd: step === 'signin' && (s.signBad === true || (s.tried && (!userTrim || !userValid))) ? '2px solid #B42318' : '1px solid #8A8276', toggleKeep: function () { self.setState({ keep: !self.state.keep }); }, showSignErr: s.signBad === true, signErrText: s.signErrMsg || t.signErr, goForgot: function () { self.go('forgot'); },
 isShop: step === 'shop', onShop: function (e) { self.setState({ shop: e.target.value, tried: false }); }, shopBd: s.tried && step === 'shop' && !(s.shop || '').trim() ? '2px solid #B42318' : '1px solid #8A8276', onCity: function (e) { self.setState({ city: e.target.value, tried: false }); }, cityOther: s.city === 'Other', onCityName: function (e) { self.setState({ cityName: e.target.value, tried: false }); }, onArea: function (e) { self.setState({ area: e.target.value }); },
 cities: cities, branches: branches, logoText: initial, logoBg: s.logo ? '#162660' : '#F6F0E7', logoFg: s.logo ? '#D0E6FD' : '#5B6585', logoBd: s.logo ? '0' : '1px dashed #C8BCAA',
 logoHelp: s.logo ? t.logoSet : t.logoNone, logoBtn: s.logo ? t.removeLogo : t.addLogo, logoIcon: s.logo ? ICONS.trash : ICONS.upload, toggleLogo: function () { self.setState({ logo: !self.state.logo }); },
@@ -616,6 +877,13 @@ export default class CreateAccount extends CreateAccountBase {
                   </>
                 ) : null}
 
+                {Boolean(v?.showServerErr) ? (
+                  <div role="alert" style={dcStyle("display:flex;gap:10px;padding:12px 14px;border-radius:12px;background:#FDF0EF;color:#B42318;max-width:520px;font-size:14px;line-height:1.5")}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={dcStyle("flex:none;margin-top:2px")}><path d={String(v?.ic?.warn || '')} /></svg>
+                    <span>{dcStr(v?.serverErr)}</span>
+                  </div>
+                ) : null}
+
                 {Boolean(v?.showCode) ? (
                   <>
                     <div style={dcStyle("display:flex;align-items:center;gap:10px;flex-wrap:wrap")}>
@@ -625,12 +893,32 @@ export default class CreateAccount extends CreateAccountBase {
                       </span>
                       <button type="button" className="bt" onClick={v?.changeNumber} style={dcStyle(("height:44px;padding:0 6px;border:0;background:transparent;color:#2E46A0;font-size:" + dcStr(v?.F?.small) + "px;font-weight:600"))}>{dcStr(v?.t?.changeNum)}</button>
                     </div>
+                    {Boolean(v?.showForgotNotice) ? (
+                      <div role="status" style={dcStyle("padding:10px 14px;border-radius:12px;background:#EEF5FE;border:1px solid #BFD8FA;color:#162660;max-width:440px;font-size:14px;line-height:1.45")}>
+                        {dcStr(v?.forgotNotice)}
+                      </div>
+                    ) : null}
+                    {Boolean(v?.showDevOtp) ? (
+                      <div role="note" style={dcStyle("display:flex;flex-direction:column;gap:8px;padding:12px 14px;border-radius:14px;background:#EEF5FE;border:1px solid #BFD8FA;max-width:440px")}>
+                        <span style={dcStyle("font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#24398A")}>{"Temporary Dev / Testing OTP"}</span>
+                        <span style={dcStyle("font-size:13px;line-height:1.45;color:#454F70")}>{dcStr(v?.demoNotice)}</span>
+                        <div style={dcStyle("display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 12px;border-radius:10px;background:#ffffff;border:1px solid #D0E6FD")}>
+                          <span dir="ltr" style={dcStyle("font-family:'JetBrains Mono',monospace;font-size:24px;font-weight:700;letter-spacing:.28em;color:#162660")}>{dcStr(v?.devOtp)}</span>
+                          <button type="button" className="bs" onClick={v?.copyDevOtp} style={dcStyle("height:36px;padding:0 12px;border:1px solid #D9CFC0;border-radius:9px;background:#F8F2E9;color:#162660;font-size:13px;font-weight:600;flex:none")}>{v?.copiedOtp ? 'Copied' : 'Copy code'}</button>
+                        </div>
+                      </div>
+                    ) : null}
                     <div style={dcStyle("display:flex;flex-direction:column;gap:6px;max-width:360px;width:100%")}>
                       <label htmlFor="ca-code" style={dcStyle(("font-size:" + dcStr(v?.F?.label) + "px;font-weight:600;color:#454F70"))}>{dcStr(v?.t?.l_code)}</label>
                       <input id="ca-code" dir="ltr" type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={dcStr(v?.s?.code)} onChange={v?.onCode} onKeyDown={v?.onEnter} placeholder="••••••" aria-describedby="ca-code-h" aria-invalid={v?.codeInvalid === 'true'} style={dcStyle(("height:64px;border:" + dcStr(v?.codeBd) + ";border-radius:12px;background:#ffffff;padding:0 18px;font-family:'JetBrains Mono',monospace;font-size:28px;font-weight:500;letter-spacing:.35em;color:#162660;text-align:center"))} />
                       <span id="ca-code-h" role={String(v?.codeRole || 'note')} style={dcStyle(("font-size:" + dcStr(v?.F?.small) + "px;line-height:" + dcStr(v?.F?.lh) + ";color:" + dcStr(v?.codeHelpFg)))}>{dcStr(v?.codeHelp)}</span>
                     </div>
-                    <button type="button" className="bs" disabled={Boolean(v?.resendOff)} onClick={v?.doResend} style={dcStyle(("align-self:flex-start;height:44px;padding:0 14px;border:1px solid #D9CFC0;border-radius:12px;background:#ffffff;font-size:" + dcStr(v?.F?.small) + "px;font-weight:600"))}>{dcStr(v?.resendLabel)}</button>
+                    <div style={dcStyle("display:flex;align-items:center;gap:10px;flex-wrap:wrap")}>
+                      <button type="button" className="bs" disabled={Boolean(v?.resendOff)} onClick={v?.doResend} style={dcStyle(("height:44px;padding:0 14px;border:1px solid #D9CFC0;border-radius:12px;background:#ffffff;font-size:" + dcStr(v?.F?.small) + "px;font-weight:600"))}>{dcStr(v?.resendLabel)}</button>
+                      {Boolean(v?.isResetStep) && !Boolean(v?.resetOtpVerified) ? (
+                        <button type="button" className="bs" disabled={!Boolean(v?.canVerifyResetOtp)} onClick={v?.verifyResetOtpNow} style={dcStyle(("height:44px;padding:0 14px;border:1px solid #162660;border-radius:12px;background:#EEF5FE;color:#162660;font-size:" + dcStr(v?.F?.small) + "px;font-weight:600"))}>{"Verify code"}</button>
+                      ) : null}
+                    </div>
                   </>
                 ) : null}
 
@@ -675,6 +963,17 @@ export default class CreateAccount extends CreateAccountBase {
                       ) : null}
                       {Boolean(v?.isSignin) ? (<span id="ca-pw-h" className="sr">{dcStr(v?.t?.l_pw2)}</span>) : null}
                     </div>
+                    {Boolean(v?.showPwConfirm) ? (
+                      <div style={dcStyle("display:flex;flex-direction:column;gap:6px;max-width:440px;width:100%")}>
+                        <label htmlFor="ca-pw2" style={dcStyle(("font-size:" + dcStr(v?.F?.label) + "px;font-weight:600;color:#454F70"))}>{dcStr(v?.pwConfirmLabel)}</label>
+                        <div dir="ltr" style={dcStyle(("display:flex;align-items:center;height:52px;border:" + dcStr(v?.pwConfirmBd) + ";border-radius:12px;background:#ffffff;overflow:hidden"))}>
+                          <input id="ca-pw2" type={String(v?.pwType || 'password')} autoComplete="new-password" value={dcStr(v?.s?.pwConfirm)} onChange={v?.onPwConfirm} onKeyDown={v?.onEnter} placeholder="Re-enter password" style={dcStyle("flex:1;min-width:0;height:100%;border:0;outline:0;padding:0 14px;font-size:17px;background:transparent;color:#162660")} />
+                        </div>
+                        {Boolean(v?.pwConfirmBad) ? (
+                          <span role="alert" style={dcStyle(("font-size:" + dcStr(v?.F?.small) + "px;color:#B42318"))}>{"Passwords do not match."}</span>
+                        ) : null}
+                      </div>
+                    ) : null}
                     {Boolean(v?.isSignin) ? (
                       <>
                         <label style={dcStyle("display:flex;align-items:flex-start;gap:12px;min-height:44px;cursor:pointer;max-width:440px")}>
@@ -687,7 +986,7 @@ export default class CreateAccount extends CreateAccountBase {
                         {Boolean(v?.showSignErr) ? (
                           <div role="alert" style={dcStyle(("display:flex;gap:10px;padding:12px 14px;border-radius:12px;background:#FDF0EF;color:#B42318;max-width:440px;font-size:" + dcStr(v?.F?.small) + "px;line-height:" + dcStr(v?.F?.lh)))}>
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={dcStyle("flex:none;margin-top:1px")}><path d={String(v?.ic?.warn || '')} /></svg>
-                            <span>{dcStr(v?.t?.signErr)}</span>
+                            <span>{dcStr(v?.signErrText)}</span>
                           </div>
                         ) : null}
                         <div style={dcStyle("display:flex;flex-wrap:wrap;gap:4px 20px")}>

@@ -5,6 +5,12 @@ const nextConfig: NextConfig = {
   images: {
     unoptimized: true,
   },
+  serverExternalPackages: [
+    '@nestjs/core',
+    '@nestjs/common',
+    'reflect-metadata',
+    'bcryptjs',
+  ],
 };
 
 export default nextConfig;

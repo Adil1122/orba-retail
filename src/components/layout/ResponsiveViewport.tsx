@@ -1,12 +1,31 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import type { ModuleName } from '@/types/pos';
 import { usePosApp } from '@/context/PosAppContext';
 import { MODULE_MAP } from '@/lib/routes';
 import { getModuleComponent } from '@/components/modules/ModuleRegistry';
 import { ModuleSwitcherDrawer } from './ModuleSwitcherDrawer';
 import { Toast } from '@/components/ui/Toast';
+import { LoadingState } from '@/components/ui/LoadingState';
+
+const PUBLIC_AUTH_MODULES = new Set<ModuleName>([
+  'CreateAccount',
+  'SignIn',
+  'Login',
+  'Setup',
+]);
+
+const PUBLIC_PATHS = new Set<string>([
+  '/',
+  '/login',
+  '/register',
+  '/join',
+  '/signin',
+  '/staff-login',
+  '/setup',
+]);
 
 export interface ResponsiveViewportProps {
   moduleName: ModuleName;
@@ -19,9 +38,32 @@ export function ResponsiveViewport({
   moduleProps = {},
   title,
 }: ResponsiveViewportProps) {
-  const { viewport, kit, lang, setKit, setLang, setDrawerOpen, toastMessage } = usePosApp();
+  const router = useRouter();
+  const pathname = usePathname() || '/';
+  const {
+    viewport,
+    kit,
+    lang,
+    setKit,
+    setLang,
+    setDrawerOpen,
+    toastMessage,
+    authUser,
+    authLoading,
+    refreshAuth,
+    logout,
+  } = usePosApp();
   const meta = MODULE_MAP[moduleName];
   const Component = getModuleComponent(moduleName);
+
+  const isPublicRoute =
+    PUBLIC_AUTH_MODULES.has(moduleName) || PUBLIC_PATHS.has(pathname);
+
+  useEffect(() => {
+    if (!isPublicRoute && !authLoading && !authUser) {
+      router.replace('/login');
+    }
+  }, [isPublicRoute, authLoading, authUser, router]);
 
   const computedProps = useMemo(() => {
     const vw = viewport.width;
@@ -54,6 +96,9 @@ export function ResponsiveViewport({
       h: vh,
       onLangChange: setLang,
       onKitChange: setKit,
+      authUser,
+      onAuthSuccess: refreshAuth,
+      onLogout: logout,
     };
 
     if (meta?.supportsKit && !moduleProps.kit) {
@@ -64,9 +109,22 @@ export function ResponsiveViewport({
     }
 
     return merged;
-  }, [viewport, meta, moduleProps, kit, lang, setKit, setLang]);
+  }, [viewport, meta, moduleProps, kit, lang, setKit, setLang, authUser, refreshAuth, logout]);
 
   const isStandaloneModal = meta?.kind === 'modal';
+
+  if (!isPublicRoute && (authLoading || !authUser)) {
+    return (
+      <div className="min-h-[100dvh] w-full flex items-center justify-center bg-[#F1E4D1] p-6">
+        <div className="w-full max-w-md rounded-2xl bg-white border border-[#E9E1D5] p-6 shadow-sm">
+          <p className="text-sm font-semibold text-[#162660] mb-3">
+            {authLoading ? 'Checking your session…' : 'Redirecting to sign in…'}
+          </p>
+          <LoadingState rows={3} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

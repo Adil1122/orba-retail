@@ -4,6 +4,44 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { useRouter } from 'next/navigation';
 import type { AppLang, CartLine, ShopKitId, UserRole, ViewportMetrics } from '@/types/pos';
 import { setBoardNavigator } from '@/lib/common';
+import { authApi } from '@/lib/authApi';
+
+export interface AuthBranch {
+  id: string;
+  name: string;
+  city: string | null;
+  address: string | null;
+  isMain: boolean;
+}
+
+export interface AuthBusiness {
+  id: string;
+  name: string;
+  phone: string | null;
+  currency: string;
+  timezone: string;
+  shopKit: ShopKitId;
+  status: string;
+}
+
+export interface AuthUser {
+  id: string;
+  fullName: string;
+  shortName: string;
+  initials: string;
+  phone: string | null;
+  email: string | null;
+  avatarUrl: string | null;
+  avatarBg: string;
+  avatarFg: string;
+  status: string;
+  role: UserRole;
+  roleName: string;
+  roleDisplayName: string;
+  business: AuthBusiness | null;
+  branch: AuthBranch | null;
+  branches: AuthBranch[];
+}
 
 interface PosContextValue {
   role: UserRole;
@@ -23,6 +61,11 @@ interface PosContextValue {
   setDrawerOpen: (open: boolean) => void;
   toastMessage: string | null;
   showToast: (msg: string) => void;
+  authUser: AuthUser | null;
+  authLoading: boolean;
+  setAuthUser: (user: AuthUser | null) => void;
+  refreshAuth: () => Promise<AuthUser | null>;
+  logout: () => Promise<void>;
 }
 
 const PosContext = createContext<PosContextValue | null>(null);
@@ -95,6 +138,50 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [viewport, setViewport] = useState<ViewportMetrics>(() => computeViewport(1280, 800));
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [authLoading, setAuthLoading] = useState<boolean>(true);
+
+  const showToast = useCallback((msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage((cur) => (cur === msg ? null : cur));
+    }, 2800);
+  }, []);
+
+  const refreshAuth = useCallback(async (): Promise<AuthUser | null> => {
+    try {
+      const res = await authApi.me();
+      if (res.ok && res.data?.user) {
+        const u = res.data.user as AuthUser;
+        setAuthUser(u);
+        if (u.role) setRole(u.role);
+        if (u.business?.shopKit) setKit(u.business.shopKit);
+        return u;
+      }
+      setAuthUser(null);
+      return null;
+    } catch {
+      setAuthUser(null);
+      return null;
+    } finally {
+      setAuthLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshAuth();
+  }, [refreshAuth]);
+
+  const logout = useCallback(async () => {
+    try {
+      await authApi.logout();
+    } catch {
+      // Ignore network errors on logout; clear client state regardless
+    }
+    setAuthUser(null);
+    showToast('Signed out');
+    router.replace('/login');
+  }, [router, showToast]);
 
   useEffect(() => {
     const sync = () => {
@@ -177,13 +264,6 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const showToast = useCallback((msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => {
-      setToastMessage((cur) => (cur === msg ? null : cur));
-    }, 2800);
-  }, []);
-
   const addToCart = useCallback((line: Omit<CartLine, 'qty'>, qty = 1) => {
     setCart((prev) => {
       const idx = prev.findIndex((x) => x.key === line.key);
@@ -225,8 +305,13 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
       setDrawerOpen,
       toastMessage,
       showToast,
+      authUser,
+      authLoading,
+      setAuthUser,
+      refreshAuth,
+      logout,
     }),
-    [role, kit, lang, viewport, cart, addToCart, updateCartQty, removeFromCart, clearCart, navigateBoard, drawerOpen, toastMessage, showToast]
+    [role, kit, lang, viewport, cart, addToCart, updateCartQty, removeFromCart, clearCart, navigateBoard, drawerOpen, toastMessage, showToast, authUser, authLoading, refreshAuth, logout]
   );
 
   return <PosContext.Provider value={value}>{children}</PosContext.Provider>;
